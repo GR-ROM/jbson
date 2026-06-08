@@ -1,0 +1,99 @@
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.google.protobuf' version '0.9.4'
+}
+
+group = "su.grinev"
+version = project.findProperty('releaseVersion') ?: "0.6.7"
+
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+publishing {
+    publications {
+        gpr(MavenPublication) {
+            from components.java
+            groupId = group
+            artifactId = 'jbson'
+            version = version
+        }
+    }
+
+    repositories {
+        def githubActor = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user")
+        def githubToken = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.key")
+
+        if (githubActor && githubToken) {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/GR-ROM/JBson")
+                credentials {
+                    username = githubActor
+                    password = githubToken
+                }
+            }
+        } else {
+            logger.lifecycle("GITHUB_ACTOR/GITHUB_TOKEN are not set - skipping GitHubPackages repo")
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.projectlombok:lombok:1.18.42'
+    annotationProcessor 'org.projectlombok:lombok:1.18.40'
+    implementation 'org.slf4j:slf4j-api:2.0.13'
+
+    testImplementation 'org.mongodb:bson:4.10.2'
+    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // JMH for benchmarking
+    testImplementation 'org.openjdk.jmh:jmh-core:1.37'
+    testAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
+
+    // Protobuf
+    testImplementation 'com.google.protobuf:protobuf-java:3.25.1'
+
+    // LZ4 compression (for benchmarks)
+    testImplementation 'org.lz4:lz4-java:1.8.0'
+}
+
+protobuf {
+    protoc {
+        artifact = 'com.google.protobuf:protoc:3.25.1'
+    }
+    generateProtoTasks {
+        all().each { task ->
+            task.builtins {
+                java {}
+            }
+        }
+    }
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        showStandardStreams = true
+    }
+}
+
+// JMH benchmark task
+task jmh(type: JavaExec) {
+    dependsOn testClasses
+    mainClass = 'org.openjdk.jmh.Main'
+    classpath = sourceSets.test.runtimeClasspath
+}

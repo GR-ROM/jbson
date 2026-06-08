@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package su.grinev.proto;
+
+option java_package = "su.grinev.proto";
+option java_outer_classname = "BlockingsProto";
+
+message BlockingsInfoCacheableDto {
+    int32 number = 1;
+    string date = 2;
+    string authority_name = 3;
+    string block_reason = 4;
+    int64 block_amount = 5;
+    string block_type = 6;
+}
+
+message GetBlockingsInfoResultCacheableDto {
+    string customer_id = 1;
+    string account_number = 2;
+    repeated BlockingsInfoCacheableDto blockings_info = 3;
+}

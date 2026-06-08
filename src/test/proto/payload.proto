@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package su.grinev.proto;
+
+option java_package = "su.grinev.proto";
+option java_outer_classname = "PayloadProto";
+
+message PayloadData {
+    bytes packet = 1;
+}
+
+message PayloadRequest {
+    string command = 1;
+    PayloadData data = 2;
+}

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package su.grinev.proto;
+
+option java_package = "su.grinev.proto";
+option java_outer_classname = "NestedProto";
+
+message NestedItem {
+    int32 id = 1;
+    string name = 2;
+    bool active = 3;
+    double score = 4;
+}
+
+message NestedContainer {
+    map<string, NestedItem> fields = 1;
+}
