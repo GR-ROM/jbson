@@ -44,7 +44,7 @@ publishing {
         if (githubActor && githubToken) {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/GR-ROM/JBson")
+                url = uri("https://maven.pkg.github.com/GR-ROM/jbson")
                 credentials {
                     username = githubActor
                     password = githubToken
