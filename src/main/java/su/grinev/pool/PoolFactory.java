@@ -38,7 +38,12 @@ public class PoolFactory {
     }
 
     public <T> FastPool<T> getPool(String name, Supplier<T> supplier) {
-        FastPool<T> pool = new FastPool<>(name, supplier, item -> {}, minPoolSize, maxPoolSize, blocking, outOfPoolTimeout);
+        return getPool(name, supplier, minPoolSize);
+    }
+
+    /** Create a pool with an explicit prefill (warm baseline) instead of the factory's default minPoolSize. */
+    public <T> FastPool<T> getPool(String name, Supplier<T> supplier, int initialSize) {
+        FastPool<T> pool = new FastPool<>(name, supplier, item -> {}, initialSize, maxPoolSize, blocking, outOfPoolTimeout);
         pools.put(name, pool);
         return pool;
     }
@@ -57,7 +62,12 @@ public class PoolFactory {
     }
 
     public <T extends Disposable> DisposablePool<T> getDisposablePool(String name, Supplier<T> supplier) {
-        DisposablePool<T> disposablePool = new DisposablePool<>(name, supplier, minPoolSize, maxPoolSize, blocking, outOfPoolTimeout);
+        return getDisposablePool(name, supplier, minPoolSize);
+    }
+
+    /** Create a disposable pool with an explicit prefill (warm baseline) instead of the factory's default minPoolSize. */
+    public <T extends Disposable> DisposablePool<T> getDisposablePool(String name, Supplier<T> supplier, int initialSize) {
+        DisposablePool<T> disposablePool = new DisposablePool<>(name, supplier, initialSize, maxPoolSize, blocking, outOfPoolTimeout);
         pools.put(name, disposablePool);
         return disposablePool;
     }
