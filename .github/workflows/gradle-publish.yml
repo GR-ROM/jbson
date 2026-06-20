@@ -1,0 +1,43 @@
+name: Publish package to GitHub Packages
+
+# Publishes su.grinev:jbson to GitHub Packages whenever a version tag (v*) is pushed.
+# The version is taken from the tag name (v0.6.8 -> 0.6.8) and passed to build.gradle
+# via -PreleaseVersion. Uses the auto-provisioned GITHUB_TOKEN — no personal token needed.
+#
+# Release flow:
+#   1. bump the default version in build.gradle (optional; the tag is authoritative)
+#   2. git commit
+#   3. git tag v<version> && git push origin v<version>
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Derive version from tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to GitHub Packages
+        run: ./gradlew publish -PreleaseVersion=${{ steps.version.outputs.value }} --no-daemon --stacktrace
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
