@@ -6,7 +6,7 @@ import su.grinev.messagepack.MessagePackWriter;
 import su.grinev.messagepack.ReaderContext;
 import su.grinev.messagepack.WriterContext;
 import su.grinev.pool.DynamicByteBuffer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.nio.ByteBuffer;
@@ -30,11 +30,11 @@ public class MessagePackMapperTests {
                 .setBlocking(true)
                 .build();
 
-        Pool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
-        Pool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
+        FastPool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
 
-        Pool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
         MessagePackWriter writer = new MessagePackWriter(writerContextPool, writerStackPool);
         MessagePackReader reader = new MessagePackReader(readerContextPool, stackPool, false, false);
 
@@ -75,11 +75,11 @@ public class MessagePackMapperTests {
                 .setOutOfPoolTimeout(1000)
                 .build();
 
-        Pool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
-        Pool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
+        FastPool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
 
-        Pool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
         MessagePackWriter writer = new MessagePackWriter(writerContextPool, writerStackPool);
         MessagePackReader reader = new MessagePackReader(readerContextPool, stackPool, true, true);
 
@@ -163,11 +163,11 @@ public class MessagePackMapperTests {
                 .setOutOfPoolTimeout(1000)
                 .build();
 
-        Pool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
-        Pool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
+        FastPool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
 
-        Pool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
         MessagePackWriter writer = new MessagePackWriter(writerContextPool, writerStackPool);
         MessagePackReader reader = new MessagePackReader(readerContextPool, stackPool, true, true);
 

@@ -5,7 +5,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import su.grinev.BinaryDocument;
 import su.grinev.Deserializer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -14,12 +14,11 @@ import java.util.*;
 
 @Slf4j
 public class MessagePackReader implements Deserializer {
-
     private static final int STRING_BUFFER_SIZE = 256;
     private static final int DEFAULT_MAX_COLLECTION_SIZE = 65536;
     private static final int DEFAULT_MAP_POOL_SIZE = 16;
-    private final Pool<ReaderContext> contextPool;
-    private final Pool<ArrayDeque<ReaderContext>> stackPool;
+    private final FastPool<ReaderContext> contextPool;
+    private final FastPool<ArrayDeque<ReaderContext>> stackPool;
     private final boolean useProjectionsForByteBuffer;
     private final boolean useByteBufferForBinary;
     private final int maxCollectionSize;
@@ -34,16 +33,16 @@ public class MessagePackReader implements Deserializer {
     private boolean timestampAsEpochMillis;
 
     public MessagePackReader(
-            Pool<ReaderContext> contextPool,
-            Pool<ArrayDeque<ReaderContext>> stackPool,
+            FastPool<ReaderContext> contextPool,
+            FastPool<ArrayDeque<ReaderContext>> stackPool,
             boolean useProjectionsForByteBuffer,
             boolean useByteBufferForBinary) {
         this(contextPool, stackPool, useProjectionsForByteBuffer, useByteBufferForBinary, DEFAULT_MAX_COLLECTION_SIZE);
     }
 
     public MessagePackReader(
-            Pool<ReaderContext> contextPool,
-            Pool<ArrayDeque<ReaderContext>> stackPool,
+            FastPool<ReaderContext> contextPool,
+            FastPool<ArrayDeque<ReaderContext>> stackPool,
             boolean useProjectionsForByteBuffer,
             boolean useByteBufferForBinary,
             int maxCollectionSize) {
@@ -67,7 +66,7 @@ public class MessagePackReader implements Deserializer {
         mapPool.reset();
 
         try {
-            int rootSize = getMapSize(buffer);
+            final int rootSize = getMapSize(buffer);
             stack.addFirst(contextPool.get().initMap(root, rootSize));
 
             while (!stack.isEmpty()) {

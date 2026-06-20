@@ -9,7 +9,7 @@ import su.grinev.messagepack.ReaderContext;
 import su.grinev.messagepack.WriterContext;
 import su.grinev.pool.DisposablePool;
 import su.grinev.pool.DynamicByteBuffer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.io.IOException;
@@ -56,10 +56,10 @@ public class Codec {
     }
 
     public static Codec messagePack(PoolFactory poolFactory, int documentSize, Binder.ClassNameMode classNameMode) {
-        Pool<WriterContext> writerContextPool = poolFactory.getPool("msgpack-writer-context-pool", WriterContext::new);
-        Pool<ReaderContext> readerContextPool = poolFactory.getPool("msgpack-reader-context-pool", ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> readerStackPool = poolFactory.getPool("msgpack-reader-stack-pool", () -> new ArrayDeque<>(64));
-        Pool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool("msgpack-writer-stack-pool", () -> new ArrayDeque<>(64));
+        FastPool<WriterContext> writerContextPool = poolFactory.getPool("msgpack-writer-context-pool", WriterContext::new);
+        FastPool<ReaderContext> readerContextPool = poolFactory.getPool("msgpack-reader-context-pool", ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> readerStackPool = poolFactory.getPool("msgpack-reader-stack-pool", () -> new ArrayDeque<>(64));
+        FastPool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool("msgpack-writer-stack-pool", () -> new ArrayDeque<>(64));
         MessagePackWriter writer = new MessagePackWriter(writerContextPool, writerStackPool);
         MessagePackReader reader = new MessagePackReader(readerContextPool, readerStackPool, true, true);
         DisposablePool<DynamicByteBuffer> pool = poolFactory.getDisposablePool("codec-buffer-pool", () -> new DynamicByteBuffer(documentSize, true));

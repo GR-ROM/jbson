@@ -4,7 +4,7 @@ import su.grinev.BinaryDocument;
 import su.grinev.Serializer;
 import su.grinev.pool.DisposablePool;
 import su.grinev.pool.DynamicByteBuffer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.io.IOException;
@@ -32,10 +32,10 @@ public class BsonObjectWriter implements Serializer {
         }
     }
 
-    private final Pool<WriterContext> writerContextPool;
+    private final FastPool<WriterContext> writerContextPool;
     private final DisposablePool<DynamicByteBuffer> dynamicByteBufferPool;
-    private final Pool<byte[]> bufferPool;
-    private final Pool<ArrayDeque<WriterContext>> stackPool;
+    private final FastPool<byte[]> bufferPool;
+    private final FastPool<ArrayDeque<WriterContext>> stackPool;
     private final Map<Object, byte[]> keyBytesCache = new ConcurrentHashMap<>();
 
     public BsonObjectWriter(

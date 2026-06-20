@@ -9,7 +9,7 @@ import su.grinev.messagepack.MessagePackWriter;
 import su.grinev.messagepack.ReaderContext;
 import su.grinev.messagepack.WriterContext;
 import su.grinev.pool.DynamicByteBuffer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.nio.ByteBuffer;

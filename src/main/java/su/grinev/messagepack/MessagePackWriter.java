@@ -5,7 +5,7 @@ import lombok.Setter;
 import su.grinev.BinaryDocument;
 import su.grinev.Serializer;
 import su.grinev.pool.DynamicByteBuffer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -17,15 +17,15 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MessagePackWriter implements Serializer {
-    private final Pool<WriterContext> contextPool;
-    private final Pool<ArrayDeque<WriterContext>> stackPool;
+    private final FastPool<WriterContext> contextPool;
+    private final FastPool<ArrayDeque<WriterContext>> stackPool;
     private final Map<String, byte[]> keyCache = new ConcurrentHashMap<>();
     private final ThreadLocal<Map<String, byte[]>> stringBytesCache = ThreadLocal.withInitial(HashMap::new);
     @Setter
     @Getter
     private boolean writeLengthHeader;
 
-    public MessagePackWriter(Pool<WriterContext> contextPool, Pool<ArrayDeque<WriterContext>> stackPool) {
+    public MessagePackWriter(FastPool<WriterContext> contextPool, FastPool<ArrayDeque<WriterContext>> stackPool) {
         this.contextPool = contextPool;
         this.stackPool = stackPool;
         writeLengthHeader = true;

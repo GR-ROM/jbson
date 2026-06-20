@@ -11,7 +11,7 @@ import su.grinev.messagepack.ReaderContext;
 import su.grinev.messagepack.WriterContext;
 import su.grinev.pool.DisposablePool;
 import su.grinev.pool.DynamicByteBuffer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.nio.ByteBuffer;
@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Thread)
 @Warmup(iterations = 5, time = 3, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 3, timeUnit = TimeUnit.SECONDS)
-@Fork(1)
+@Fork(value = 1, jvmArgsAppend = "--enable-native-access=ALL-UNNAMED")
 public class MessagePackBenchmark {
 
     private MessagePackWriter messagePackWriter;
@@ -45,10 +45,10 @@ public class MessagePackBenchmark {
                 .setOutOfPoolTimeout(1000)
                 .build();
 
-        Pool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
-        Pool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
-        Pool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
+        FastPool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
         bufferPool = poolFactory.getDisposablePool(() -> new DynamicByteBuffer(256 * 1024, true));
 
         messagePackWriter = new MessagePackWriter(writerContextPool, writerStackPool);
@@ -74,7 +74,6 @@ public class MessagePackBenchmark {
         serialized128kb.put(buffer.getBuffer());
         serialized128kb.flip();
         buffer.dispose();
-        bufferPool.release(buffer);
 
         // Setup many fields benchmark - 1000 nested objects
         Map<Object, Object> fields = new HashMap<>();
@@ -96,7 +95,6 @@ public class MessagePackBenchmark {
         manyFieldsSerialized.put(manyFieldsBuffer.getBuffer());
         manyFieldsSerialized.flip();
         manyFieldsBuffer.dispose();
-        bufferPool.release(manyFieldsBuffer);
 
         // Setup simple document benchmark
         Map<Object, Object> simple = new HashMap<>();
@@ -112,7 +110,6 @@ public class MessagePackBenchmark {
         simpleSerialized.put(simpleBuffer.getBuffer());
         simpleSerialized.flip();
         simpleBuffer.dispose();
-        bufferPool.release(simpleBuffer);
     }
 
     // --- 128KB payload benchmarks ---
@@ -122,7 +119,6 @@ public class MessagePackBenchmark {
         DynamicByteBuffer buffer = bufferPool.get();
         messagePackWriter.serialize(buffer, document128kb);
         buffer.dispose();
-        bufferPool.release(buffer);
         return buffer;
     }
 
@@ -141,7 +137,6 @@ public class MessagePackBenchmark {
         BinaryDocument result = new BinaryDocument(new HashMap<>());
         messagePackReader.deserialize(buffer.getBuffer(), result);
         buffer.dispose();
-        bufferPool.release(buffer);
         return result;
     }
 
@@ -152,7 +147,6 @@ public class MessagePackBenchmark {
         DynamicByteBuffer buffer = bufferPool.get();
         messagePackWriter.serialize(buffer, manyFieldsDocument);
         buffer.dispose();
-        bufferPool.release(buffer);
         return buffer;
     }
 
@@ -171,7 +165,6 @@ public class MessagePackBenchmark {
         BinaryDocument result = new BinaryDocument(new HashMap<>());
         messagePackReader.deserialize(buffer.getBuffer(), result);
         buffer.dispose();
-        bufferPool.release(buffer);
         return result;
     }
 
@@ -182,7 +175,6 @@ public class MessagePackBenchmark {
         DynamicByteBuffer buffer = bufferPool.get();
         messagePackWriter.serialize(buffer, simpleDocument);
         buffer.dispose();
-        bufferPool.release(buffer);
         return buffer;
     }
 
@@ -201,7 +193,6 @@ public class MessagePackBenchmark {
         BinaryDocument result = new BinaryDocument(new HashMap<>());
         messagePackReader.deserialize(buffer.getBuffer(), result);
         buffer.dispose();
-        bufferPool.release(buffer);
         return result;
     }
 

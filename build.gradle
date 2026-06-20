@@ -3,6 +3,20 @@ plugins {
     id 'java-library'
     id 'maven-publish'
     id 'com.google.protobuf' version '0.9.4'
+    id 'jacoco'
+}
+
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = true
+    }
 }
 
 group = "su.grinev"
@@ -78,16 +92,34 @@ protobuf {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
+        languageVersion.set(JavaLanguageVersion.of(25))
     }
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
 }
 
 test {
     useJUnitPlatform()
+    // FFM Arena uses restricted native methods; allow them without the runtime warning.
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    // The multi-second chaos/stress storm is not run as part of the normal suite — use `gradle chaos`.
+    exclude '**/*ChaosTest*'
     testLogging {
         showStandardStreams = true
+    }
+}
+
+// Randomized, time-boxed chaos/stress tests. Run on demand; always re-executed (never cached).
+task chaos(type: Test) {
+    description = 'Runs the randomized FastPool chaos/stress tests.'
+    group = 'verification'
+    useJUnitPlatform()
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include '**/*ChaosTest*'
+    outputs.upToDateWhen { false }
+    testLogging {
+        showStandardStreams = true
+        events 'passed', 'failed'
     }
 }
 
@@ -96,4 +128,5 @@ task jmh(type: JavaExec) {
     dependsOn testClasses
     mainClass = 'org.openjdk.jmh.Main'
     classpath = sourceSets.test.runtimeClasspath
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }

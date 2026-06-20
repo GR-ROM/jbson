@@ -3,41 +3,24 @@ package su.grinev.pool;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class DynamicByteBuffer implements Disposable {
+public class DynamicByteBuffer extends ArenaByteBuffer implements Disposable {
     private Runnable onDispose;
-    private ByteBuffer buffer;
-    private final boolean direct;
 
-    public DynamicByteBuffer(int capacity, boolean direct) {
-        this.direct = direct;
-        if (direct) {
-            this.buffer = ByteBuffer.allocateDirect(capacity);
-        } else {
-            this.buffer = ByteBuffer.allocate(capacity);
-        }
-        initBuffer();
+    public DynamicByteBuffer(int capacity) {
+        super(capacity);
     }
 
-    public void ensureCapacity(int additionalCapacity) {
-        if (buffer.remaining() < additionalCapacity) {
-            ByteBuffer oldBuffer = buffer;
-            if (direct) {
-                buffer = ByteBuffer.allocateDirect(Math.max(buffer.capacity() * 2, buffer.remaining() + additionalCapacity));
-            } else {
-                buffer = ByteBuffer.allocate(Math.max(buffer.capacity() * 2, buffer.remaining() + additionalCapacity));
-            }
-            initBuffer();
-            buffer.put(oldBuffer.flip());
-        }
+    /**
+     * Compatibility constructor: arena-backed memory is always native, so the
+     * {@code direct} flag is no longer meaningful and is ignored.
+     */
+    public DynamicByteBuffer(int capacity, boolean direct) {
+        super(capacity);
     }
 
     public void initBuffer() {
-        buffer.order(ByteOrder.LITTLE_ENDIAN);
+        super.buffer.order(ByteOrder.LITTLE_ENDIAN);
         buffer.clear();
-    }
-
-    public ByteBuffer getBuffer() {
-        return buffer;
     }
 
     public DynamicByteBuffer position(int newPosition) {
@@ -122,6 +105,12 @@ public class DynamicByteBuffer implements Disposable {
     @Override
     public void dispose() {
         this.onDispose.run();
+    }
+
+    @Override
+    public void destroy() {
+        // Heap and direct ByteBuffers are reclaimed by the GC; nothing to free deterministically.
+        buffer = null;
     }
 
     @Override

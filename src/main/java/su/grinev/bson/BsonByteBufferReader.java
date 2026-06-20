@@ -3,7 +3,6 @@ package su.grinev.bson;
 import lombok.extern.slf4j.Slf4j;
 import su.grinev.exception.BsonException;
 import su.grinev.pool.FastPool;
-import su.grinev.pool.Pool;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -18,9 +17,9 @@ public class BsonByteBufferReader implements BsonReader {
     private static final int STRING_BUFFER_SIZE = 256;
     private static final ThreadLocal<byte[]> stringBuffer = ThreadLocal.withInitial(() -> new byte[STRING_BUFFER_SIZE]);
     private final ByteBuffer buffer;
-    private final Pool<ByteBuffer> byteBufferPool;
+    private final FastPool<ByteBuffer> byteBufferPool;
 
-    public BsonByteBufferReader(ByteBuffer buffer, Pool<ByteBuffer> binaryPacketPool) {
+    public BsonByteBufferReader(ByteBuffer buffer, FastPool<ByteBuffer> binaryPacketPool) {
         this.buffer = buffer;
         this.byteBufferPool = binaryPacketPool;
     }

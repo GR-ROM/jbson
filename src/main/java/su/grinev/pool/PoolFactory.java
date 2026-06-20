@@ -14,7 +14,7 @@ public class PoolFactory {
     private int minPoolSize;
     private int outOfPoolTimeout;
     private boolean blocking;
-    private final Map<String, BasePool> pools = new ConcurrentHashMap<>();
+    private final Map<String, Trimmable> pools = new ConcurrentHashMap<>();
     private final AtomicInteger poolCounter = new AtomicInteger(0);
 
     public PoolFactory(int maxPoolSize, int minPoolSize, int outOfPoolTimeout, boolean blocking) {
@@ -28,27 +28,27 @@ public class PoolFactory {
 
     }
 
-    public Map<String, BasePool> getPools() {
+    public Map<String, Trimmable> getPools() {
         return new HashMap<>(pools);
     }
 
-    public <T> Pool<T> getPool(Supplier<T> supplier) {
+    public <T> FastPool<T> getPool(Supplier<T> supplier) {
         String name = "Pool-" + poolCounter.getAndIncrement();
         return getPool(name, supplier);
     }
 
-    public <T> Pool<T> getPool(String name, Supplier<T> supplier) {
-        Pool<T> pool = new Pool<>(name, new AtomicInteger(0), minPoolSize, maxPoolSize, outOfPoolTimeout, blocking, supplier);
+    public <T> FastPool<T> getPool(String name, Supplier<T> supplier) {
+        FastPool<T> pool = new FastPool<>(name, supplier, item -> {}, minPoolSize, maxPoolSize, blocking, outOfPoolTimeout);
         pools.put(name, pool);
         return pool;
     }
 
     public <T> FastPool<T> getFastPool(Supplier<T> supplier) {
-        return new FastPool<>(supplier, minPoolSize, maxPoolSize);
+        return getPool(supplier);
     }
 
     public <T> FastPool<T> getFastPool(String name, Supplier<T> supplier) {
-        return new FastPool<>(supplier, minPoolSize, maxPoolSize);
+        return getPool(name, supplier);
     }
 
     public <T extends Disposable> DisposablePool<T> getDisposablePool(Supplier<T> supplier) {
@@ -57,7 +57,7 @@ public class PoolFactory {
     }
 
     public <T extends Disposable> DisposablePool<T> getDisposablePool(String name, Supplier<T> supplier) {
-        DisposablePool<T> disposablePool = new DisposablePool<>(name, new AtomicInteger(0), minPoolSize, maxPoolSize, outOfPoolTimeout, blocking, supplier);
+        DisposablePool<T> disposablePool = new DisposablePool<>(name, supplier, minPoolSize, maxPoolSize, blocking, outOfPoolTimeout);
         pools.put(name, disposablePool);
         return disposablePool;
     }

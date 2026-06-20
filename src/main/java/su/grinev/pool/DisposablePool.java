@@ -1,22 +1,25 @@
 package su.grinev.pool;
 
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
-public class DisposablePool<T extends Disposable> extends BasePool<T> {
-    private final Supplier<T> supplier;
+/**
+ * A {@link FastPool} of {@link Disposable} objects.
+ *
+ * Borrowed objects get an {@code onDispose} hook so {@code dispose()} returns
+ * them to the pool. Idle objects removed by {@link #trim(int)} are permanently
+ * released via {@link Disposable#destroy()} (e.g. closing an arena), so the pool
+ * shrinks its real footprint during long idle periods.
+ */
+public class DisposablePool<T extends Disposable> extends FastPool<T> {
 
-    public DisposablePool(String name, AtomicInteger counter, int initialSize, int limit, int timeoutMs, boolean blocking, Supplier<T> supplier) {
-        super(name, counter, initialSize, limit, timeoutMs, blocking);
-        this.supplier = supplier;
-        for (int i = 0; i < initialSize; i++) {
-            prefill(supply());
-        }
+    public DisposablePool(String name, Supplier<T> supplier,
+                          int initialSize, int maxSize, boolean blocking, int timeoutMs) {
+        super(name, supplier, Disposable::destroy, initialSize, maxSize, blocking, timeoutMs);
     }
 
-    protected T supply() {
-        super.currentPoolSize.incrementAndGet();
-        T t = supplier.get();
+    @Override
+    public T get() {
+        T t = super.get();
         t.setOnDispose(() -> release(t));
         return t;
     }

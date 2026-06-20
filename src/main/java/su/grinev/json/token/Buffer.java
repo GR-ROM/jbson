@@ -27,7 +27,7 @@ public class Buffer {
         return byteBuffer.getLong(pos);
     }
 
-    public long setPost(int newPos) {
+    public long setPos(int newPos) {
         this.pos = newPos;
         return newPos;
     }

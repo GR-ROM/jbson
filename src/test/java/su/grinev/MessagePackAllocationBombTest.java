@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import su.grinev.messagepack.MessagePackException;
 import su.grinev.messagepack.ReaderContext;
 import su.grinev.messagepack.MessagePackReader;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.nio.ByteBuffer;
@@ -31,8 +31,8 @@ public class MessagePackAllocationBombTest {
                 .setOutOfPoolTimeout(1000)
                 .setBlocking(false)
                 .build();
-        Pool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
         reader = new MessagePackReader(readerContextPool, stackPool, false, false);
         reader.setReadLengthHeader(false);
     }
@@ -234,8 +234,8 @@ public class MessagePackAllocationBombTest {
                 .setOutOfPoolTimeout(1000)
                 .setBlocking(false)
                 .build();
-        Pool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
 
         // maxCollectionSize = 16
         MessagePackReader strictReader = new MessagePackReader(

@@ -33,12 +33,12 @@ public class StringParser {
             if (maskedQuote != 0) {
                 int position = getPosition(maskedQuote);
                 count += position;
-                buffer.setPost(buffer.getPos() + position);
+                buffer.setPos(buffer.getPos() + position);
                 foundQuote = true;
                 break;
             }
             count += 8;
-            buffer.setPost(buffer.getPos() + 8);
+            buffer.setPos(buffer.getPos() + 8);
         }
 
         // If no quote found yet and no escape, scan remaining bytes
@@ -64,7 +64,7 @@ public class StringParser {
         }
 
         // Slow path: handle escape sequences
-        buffer.setPost(startPos);
+        buffer.setPos(startPos);
         StringBuilder sb = escapeBuilder.get();
         sb.setLength(0);
         while (true) {

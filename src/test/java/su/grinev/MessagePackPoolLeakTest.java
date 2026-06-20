@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import su.grinev.messagepack.MessagePackException;
 import su.grinev.messagepack.MessagePackReader;
 import su.grinev.messagepack.ReaderContext;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.nio.ByteBuffer;
@@ -35,8 +35,8 @@ public class MessagePackPoolLeakTest {
                 .setBlocking(false)
                 .build();
 
-        Pool<ReaderContext> contextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<ReaderContext> contextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
 
         MessagePackReader reader = new MessagePackReader(contextPool, stackPool, false, false);
         reader.setReadLengthHeader(false);
@@ -74,8 +74,8 @@ public class MessagePackPoolLeakTest {
                 .setBlocking(false)
                 .build();
 
-        Pool<ReaderContext> contextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<ReaderContext> contextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
 
         MessagePackReader reader = new MessagePackReader(contextPool, stackPool, false, false);
         reader.setReadLengthHeader(false);
@@ -109,8 +109,8 @@ public class MessagePackPoolLeakTest {
                 .setBlocking(false)
                 .build();
 
-        Pool<ReaderContext> contextPool = poolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<ReaderContext> contextPool = poolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
 
         MessagePackReader reader = new MessagePackReader(contextPool, stackPool, false, false);
         reader.setReadLengthHeader(false);

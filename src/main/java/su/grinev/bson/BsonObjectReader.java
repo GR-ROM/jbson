@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import su.grinev.BinaryDocument;
 import su.grinev.Deserializer;
 import su.grinev.exception.BsonException;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.io.IOException;
@@ -18,10 +18,10 @@ import java.util.function.Supplier;
 
 @Slf4j
 public class BsonObjectReader implements Deserializer {
-    private final Pool<ReaderContext> contextPool;
-    private final Pool<byte[]> packetPool;
-    private final Pool<ArrayDeque<ReaderContext>> stackPool;
-    private Pool<ByteBuffer> binaryPacketPool;
+    private final FastPool<ReaderContext> contextPool;
+    private final FastPool<byte[]> packetPool;
+    private final FastPool<ArrayDeque<ReaderContext>> stackPool;
+    private FastPool<ByteBuffer> binaryPacketPool;
     private final int documentSizeLimit;
     @Setter
     private boolean readBinaryAsByteArray = true;

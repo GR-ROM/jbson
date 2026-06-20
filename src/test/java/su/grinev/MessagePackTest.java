@@ -3,7 +3,7 @@ package su.grinev;
 import org.junit.jupiter.api.Test;
 import su.grinev.messagepack.*;
 import su.grinev.pool.DynamicByteBuffer;
-import su.grinev.pool.Pool;
+import su.grinev.pool.FastPool;
 import su.grinev.pool.PoolFactory;
 
 import java.nio.ByteBuffer;
@@ -21,10 +21,10 @@ public class MessagePackTest {
             .setBlocking(false)
             .build();
 
-    private final Pool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
-    private final Pool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
-    private final Pool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
-    private final Pool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
+    private final FastPool<ReaderContext> readerContextPool = poolFactory.getPool(ReaderContext::new);
+    private final FastPool<ArrayDeque<ReaderContext>> stackPool = poolFactory.getPool(() -> new ArrayDeque<>(64));
+    private final FastPool<WriterContext> writerContextPool = poolFactory.getPool(WriterContext::new);
+    private final FastPool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool(() -> new ArrayDeque<>(16));
 
     @Test
     public void serializeSimpleMap() {
@@ -151,10 +151,10 @@ public class MessagePackTest {
                 .setBlocking(false)
                 .build();
 
-        Pool<ReaderContext> localReaderPool = localFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> localStackPool = localFactory.getPool(() -> new ArrayDeque<>(64));
-        Pool<WriterContext> localWriterPool = localFactory.getPool(WriterContext::new);
-        Pool<ArrayDeque<WriterContext>> localWriterStackPool = localFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ReaderContext> localReaderPool = localFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> localStackPool = localFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> localWriterPool = localFactory.getPool(WriterContext::new);
+        FastPool<ArrayDeque<WriterContext>> localWriterStackPool = localFactory.getPool(() -> new ArrayDeque<>(16));
 
         MessagePackWriter writer = new MessagePackWriter(localWriterPool, localWriterStackPool);
         MessagePackReader reader = new MessagePackReader(localReaderPool, localStackPool, false, false);
@@ -289,8 +289,8 @@ public class MessagePackTest {
                 .setBlocking(true)
                 .build();
 
-        Pool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
-        Pool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
+        FastPool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
         MessagePackWriter writer = new MessagePackWriter(perfWriterPool, perfWriterStackPool);
 
         byte[] payload = new byte[128 * 1024];
@@ -331,11 +331,11 @@ public class MessagePackTest {
                 .setBlocking(true)
                 .build();
 
-        Pool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
-        Pool<ReaderContext> perfReaderPool = perfPoolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> perfStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
+        FastPool<ReaderContext> perfReaderPool = perfPoolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> perfStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(64));
 
-        Pool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
         MessagePackWriter writer = new MessagePackWriter(perfWriterPool, perfWriterStackPool);
         MessagePackReader reader = new MessagePackReader(perfReaderPool, perfStackPool, false, false);
 
@@ -381,11 +381,11 @@ public class MessagePackTest {
                 .setBlocking(true)
                 .build();
 
-        Pool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
-        Pool<ReaderContext> perfReaderPool = perfPoolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> perfStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
+        FastPool<ReaderContext> perfReaderPool = perfPoolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> perfStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(64));
 
-        Pool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
         MessagePackWriter writer = new MessagePackWriter(perfWriterPool, perfWriterStackPool);
         MessagePackReader reader = new MessagePackReader(perfReaderPool, perfStackPool, false, false);
 
@@ -429,11 +429,11 @@ public class MessagePackTest {
                 .setBlocking(true)
                 .build();
 
-        Pool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
-        Pool<ReaderContext> perfReaderPool = perfPoolFactory.getPool(ReaderContext::new);
-        Pool<ArrayDeque<ReaderContext>> perfStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(64));
+        FastPool<WriterContext> perfWriterPool = perfPoolFactory.getPool(WriterContext::new);
+        FastPool<ReaderContext> perfReaderPool = perfPoolFactory.getPool(ReaderContext::new);
+        FastPool<ArrayDeque<ReaderContext>> perfStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(64));
 
-        Pool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
+        FastPool<ArrayDeque<WriterContext>> perfWriterStackPool = perfPoolFactory.getPool(() -> new ArrayDeque<>(16));
         MessagePackWriter writer = new MessagePackWriter(perfWriterPool, perfWriterStackPool);
         MessagePackReader reader = new MessagePackReader(perfReaderPool, perfStackPool, false, false);
 
