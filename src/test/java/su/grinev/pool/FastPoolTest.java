@@ -17,6 +17,20 @@ public class FastPoolTest {
         return new FastPool<>("test", Object::new, destroyed::add, initialSize, maxSize, false, 0);
     }
 
+    @Test
+    void convenienceConstructor_isNonBlockingAndWorks() {
+        FastPool<Object> pool = new FastPool<>(Object::new, 2, 10); // (supplier, initialSize, maxSize)
+        assertEquals(2, pool.getIdle(), "prefilled to initialSize");
+        Object a = pool.get();
+        Object b = pool.get();
+        Object c = pool.get(); // beyond initial size: non-blocking -> creates on demand, never blocks
+        assertEquals(3, pool.getCount());
+        pool.release(a);
+        pool.release(b);
+        pool.release(c);
+        assertEquals(0, pool.getCount());
+    }
+
     /** Regression: getCount() (in-use) must stay correct across reuse and never go negative. */
     @Test
     void getCount_tracksInUseAcrossReuse() {

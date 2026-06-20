@@ -52,6 +52,15 @@ public class FastPool<T> implements Trimmable {
         }
     }
 
+    /**
+     * Convenience constructor: a non-blocking, effectively-unbounded pool with no
+     * destroyer (trimmed/dropped objects are left to the GC). {@code maxSize} bounds
+     * only the idle queue.
+     */
+    public FastPool(Supplier<T> supplier, int initialSize, int maxSize) {
+        this("fast-pool", supplier, t -> {}, initialSize, maxSize, false, 0);
+    }
+
     public T get() {
         if (permits != null) {
             acquirePermit();
