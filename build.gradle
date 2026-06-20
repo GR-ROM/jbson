@@ -20,7 +20,7 @@ jacocoTestReport {
 }
 
 group = "su.grinev"
-version = project.findProperty('releaseVersion') ?: "0.6.8"
+version = project.findProperty('releaseVersion') ?: "0.7.0"
 
 repositories {
     mavenCentral()
