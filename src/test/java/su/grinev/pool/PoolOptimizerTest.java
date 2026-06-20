@@ -159,6 +159,23 @@ public class PoolOptimizerTest {
     }
 
     @Test
+    void optimize_appliesPerPoolFloor() {
+        FakeTrimmable big = new FakeTrimmable(0, 100);   // big buffers: small floor
+        FakeTrimmable small = new FakeTrimmable(0, 100); // cheap objects: large floor
+        PoolOptimizer opt = new PoolOptimizer(
+                List.<Trimmable>of(big, small), 300,
+                (Trimmable p) -> p == big ? 20 : 80, false);
+        opt.fillAggregateWindow(); // peak demand 0 for both
+
+        opt.optimize();
+
+        assertEquals(List.of(80), big.trimCalls, "big pool trimmed down to its floor 20");
+        assertEquals(20, big.idle);
+        assertEquals(List.of(20), small.trimCalls, "small pool trimmed down to its floor 80");
+        assertEquals(80, small.idle);
+    }
+
+    @Test
     void optimize_skipsNonTrimmablePools() {
         FakeTrimmable t = new FakeTrimmable(0, 100); // lots of idle excess
         t.trimmable = false;

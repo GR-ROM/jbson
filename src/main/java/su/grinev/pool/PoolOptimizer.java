@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.ToIntFunction;
 
 /**
  * Periodically samples each monitored pool's size into a rolling
@@ -19,14 +20,24 @@ public class PoolOptimizer {
 
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
     private final List<MonitoredPool> pools;
-    private final int minPoolSize;
+    private final ToIntFunction<Trimmable> minPoolSize;
 
+    /** Uniform floor: every pool is kept at no fewer than {@code minPoolSize} idle objects. */
     public PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, int minPoolSize) {
+        this(pools, idlePeriodSeconds, minPoolSize, true);
+    }
+
+    /** Per-pool floor: {@code minPoolSize} maps each pool to the size below which it is never trimmed. */
+    public PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, ToIntFunction<Trimmable> minPoolSize) {
         this(pools, idlePeriodSeconds, minPoolSize, true);
     }
 
     /** Package-private: tests build the optimizer without starting the background scheduler. */
     PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, int minPoolSize, boolean start) {
+        this(pools, idlePeriodSeconds, p -> minPoolSize, start);
+    }
+
+    PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, ToIntFunction<Trimmable> minPoolSize, boolean start) {
         this.minPoolSize = minPoolSize;
         this.pools = new ArrayList<>(pools.size());
         pools.forEach(pool ->
@@ -49,8 +60,9 @@ public class PoolOptimizer {
             }
             int peakInUse = pool.aggregateWindow.max();
             int idleCount = pool.trimmablePool.getIdle();
+            int floor = minPoolSize.applyAsInt(pool.trimmablePool);
             if (idleCount > peakInUse) {
-                pool.trimmablePool.trim(Math.min(idleCount - peakInUse, idleCount - minPoolSize));
+                pool.trimmablePool.trim(Math.min(idleCount - peakInUse, idleCount - floor));
             }
         });
     }
