@@ -120,12 +120,12 @@ public class PoolOptimizerTest {
     }
 
     @Test
-    void optimize_usesP90_ignoringIsolatedSpikes() {
+    void optimize_usesP99_ignoringIsolatedSpikes() {
         FakeTrimmable t = new FakeTrimmable(0, 160); // 160 idle
         PoolOptimizer opt = optimizerFor(t);
-        // 19 low-demand samples (in-use 5) and one spike (150): p90 == 5, but max() would be 150.
+        // 99 low-demand samples (in-use 5) and one spike (150): p99 == 5, but max() would be 150.
         t.inUse = 5;
-        for (int i = 0; i < 19; i++) {
+        for (int i = 0; i < 99; i++) {
             opt.fillAggregateWindow();
         }
         t.inUse = 150;
@@ -133,8 +133,8 @@ public class PoolOptimizerTest {
 
         opt.optimize();
 
-        // keep = 160 - 16 = 144 > p90(5) -> trims. (Against max(150) the lone spike would have blocked it.)
-        assertEquals(List.of(16), t.trimCalls, "trims against the 90th percentile, ignoring the lone spike");
+        // keep = 160 - 16 = 144 > p99(5) -> trims. (Against max(150) the lone spike would have blocked it.)
+        assertEquals(List.of(16), t.trimCalls, "trims against the 99th percentile, ignoring the lone spike");
         assertEquals(144, t.idle);
     }
 

@@ -1,5 +1,7 @@
 package su.grinev.pool;
 
+import lombok.Getter;
+
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.ref.Cleaner;
@@ -67,6 +69,7 @@ public class ArenaByteBuffer implements Disposable {
     private final Cleaner.Cleanable cleanable; // MANUAL only (null in AUTO)
     private Arena arena;
     private MemorySegment segment;
+    @Getter
     protected ByteBuffer buffer;
 
     /** GC-managed (AUTO) buffer — the safe default. */
@@ -123,10 +126,6 @@ public class ArenaByteBuffer implements Disposable {
             holder.arena = newArena;   // the cleaner now tracks the new arena
             oldArena.close();          // free the old segment now; AUTO leaves it to the GC
         }
-    }
-
-    public ByteBuffer getBuffer() {
-        return buffer;
     }
 
     /** Native base address of the backing segment. */

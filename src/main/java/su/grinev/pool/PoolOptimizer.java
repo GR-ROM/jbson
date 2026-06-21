@@ -15,8 +15,8 @@ import java.util.function.ToIntFunction;
  * Periodically samples each monitored pool's in-use count into a rolling
  * {@link AggregateWindow} of {@code windowSeconds} samples (one per second) and,
  * every {@code idlePeriodSeconds}, frees a 1/10 slice of any pool whose retained
- * 9/10 would still exceed both the windowed 90th-percentile demand (so isolated
- * spikes don't keep a pool inflated) and the per-pool floor —
+ * 9/10 would still exceed both the windowed 99th-percentile demand (so a rare
+ * outlier spike doesn't keep a pool inflated) and the per-pool floor —
  * releasing the excess (and, for arena-backed pools, native memory) when demand
  * drops. A shorter window forgets demand spikes faster, so pools reclaim sooner.
  */
@@ -77,7 +77,7 @@ public class PoolOptimizer {
             if (!p.isTrimmable()) {
                 return;
             }
-            int peakInUse = pool.aggregateWindow.p90();   // 90th pct, not max — ignore isolated demand spikes
+            int peakInUse = pool.aggregateWindow.p99();   // 99th pct, not max — ignore only the top-1% outliers
             int idleCount = p.getIdle();
             int floor = minPoolSize.applyAsInt(p);
             int toFree = idleCount / 10;     // gradual: free 1/10 of idle per tick
