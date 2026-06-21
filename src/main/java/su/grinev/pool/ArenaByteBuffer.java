@@ -2,6 +2,7 @@ package su.grinev.pool;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.ref.Cleaner;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -21,19 +22,50 @@ import java.nio.ByteOrder;
  * realloc-and-close, never an in-place resize. Preallocation keeps that path
  * off the hot path entirely.
  *
- * {@link #dispose()} recycles the buffer back to its pool; {@link #destroy()}
- * closes the arena and returns the native memory to the OS deterministically.
+ * Lifecycle: {@link #dispose()} recycles the buffer back to its pool;
+ * {@link #destroy()} closes the arena and frees the native memory
+ * deterministically. As a safety net against leaks, a {@link Cleaner} closes the
+ * arena if the buffer is dropped (garbage-collected) without {@code destroy()} —
+ * {@code Arena.ofShared()} memory is otherwise never reclaimed by the GC.
  */
 public class ArenaByteBuffer implements Disposable {
+
+    private static final Cleaner CLEANER = Cleaner.create();
+
+    /**
+     * Holds the live arena for the {@link Cleaner}. Kept in a separate object that
+     * does NOT reference the enclosing {@link ArenaByteBuffer} (otherwise the buffer
+     * could never become unreachable and the cleaner would never run).
+     */
+    private static final class ArenaHolder implements Runnable {
+        private Arena arena;
+
+        @Override
+        public void run() {
+            Arena a = arena;
+            arena = null;
+            if (a != null) {
+                try {
+                    a.close();
+                } catch (RuntimeException ignored) {
+                    // already closed (e.g. by ensureCapacity) — nothing to free
+                }
+            }
+        }
+    }
+
     private Runnable onDispose;
-    private Arena arena;
+    private final ArenaHolder holder;
+    private final Cleaner.Cleanable cleanable;
     private MemorySegment segment;
     protected ByteBuffer buffer;
 
     public ArenaByteBuffer(int capacity) {
-        this.arena = Arena.ofShared();
-        this.segment = arena.allocate(capacity);
+        this.holder = new ArenaHolder();
+        this.holder.arena = Arena.ofShared();
+        this.segment = holder.arena.allocate(capacity);
         this.buffer = segment.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        this.cleanable = CLEANER.register(this, holder);
     }
 
     /** Capacity of the preallocated native segment in bytes. Writes up to this size never reallocate. */
@@ -57,12 +89,12 @@ public class ArenaByteBuffer implements Disposable {
         MemorySegment newSegment = newArena.allocate(newCapacity);
         MemorySegment.copy(segment, 0, newSegment, 0, used);
 
-        Arena oldArena = arena;
-        this.arena = newArena;
+        Arena oldArena = holder.arena;
+        holder.arena = newArena;     // the cleaner now tracks the new arena
         this.segment = newSegment;
         this.buffer = newSegment.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
         this.buffer.position(used);
-        oldArena.close();
+        oldArena.close();            // free the old segment now (deterministic)
     }
 
     public ByteBuffer getBuffer() {
@@ -93,9 +125,8 @@ public class ArenaByteBuffer implements Disposable {
 
     @Override
     public void destroy() {
-        if (segment.scope().isAlive()) {
-            arena.close();
-        }
+        // Deterministic free: runs the holder (closes the arena) once and deregisters the cleaner.
+        cleanable.clean();
     }
 
     @Override

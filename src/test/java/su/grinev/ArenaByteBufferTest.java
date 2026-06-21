@@ -2,6 +2,7 @@ package su.grinev;
 
 import org.junit.jupiter.api.Test;
 import su.grinev.pool.ArenaByteBuffer;
+import su.grinev.pool.DynamicByteBuffer;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -103,6 +104,21 @@ public class ArenaByteBufferTest {
         ArenaByteBuffer b = new ArenaByteBuffer(16);
         b.destroy();
         assertDoesNotThrow(b::destroy, "a second destroy must be a safe no-op");
+    }
+
+    /**
+     * Regression: {@link DynamicByteBuffer#destroy()} used to only null the view and leak the
+     * arena (Arena.ofShared() is not GC-reclaimed). It must now close the arena.
+     */
+    @Test
+    void dynamicByteBuffer_destroy_closesArena() {
+        DynamicByteBuffer b = new DynamicByteBuffer(64);
+        assertTrue(b.isAlive());
+
+        b.destroy();
+
+        assertFalse(b.isAlive(), "destroy() must close the arena");
+        assertThrows(IllegalStateException.class, () -> b.getBuffer().getInt(0));
     }
 
     @Test

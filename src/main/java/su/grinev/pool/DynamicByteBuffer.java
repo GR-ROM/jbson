@@ -107,11 +107,8 @@ public class DynamicByteBuffer extends ArenaByteBuffer implements Disposable {
         this.onDispose.run();
     }
 
-    @Override
-    public void destroy() {
-        // Heap and direct ByteBuffers are reclaimed by the GC; nothing to free deterministically.
-        buffer = null;
-    }
+    // destroy() is inherited from ArenaByteBuffer: it closes the arena (deterministic free).
+    // A Cleaner in ArenaByteBuffer also closes the arena if the buffer is dropped without destroy().
 
     @Override
     public void close() {
