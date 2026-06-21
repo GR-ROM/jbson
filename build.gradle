@@ -20,7 +20,8 @@ jacocoTestReport {
 }
 
 group = "su.grinev"
-version = project.findProperty('releaseVersion') ?: "0.7.6"
+// Local/dev builds use the mutable SNAPSHOT; real releases come from a vX.Y.Z tag via -PreleaseVersion (CI).
+version = project.findProperty('releaseVersion') ?: "0.8.0-SNAPSHOT"
 
 repositories {
     mavenCentral()

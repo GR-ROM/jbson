@@ -79,12 +79,13 @@ public class PoolOptimizer {
             int peakInUse = pool.aggregateWindow.max();
             int idleCount = p.getIdle();
             int floor = minPoolSize.applyAsInt(p);
-            int keep = idleCount / 2;
-            if (keep > peakInUse && keep > floor) {
+            int toFree = idleCount / 16;     // gradual: free 1/16 of idle per tick
+            int keep = idleCount - toFree;
+            if (toFree > 0 && keep > peakInUse && keep > floor) {
                 // trim() reports back whether the pool was actually shrunk.
-                if (p.trim(idleCount - keep)) {
+                if (p.trim(toFree)) {
                     log.info("Trimmed pool '{}': idle {} -> {} (freed {}, peak {}, floor {})",
-                            p.getName(), idleCount, p.getIdle(), idleCount - keep, peakInUse, floor);
+                            p.getName(), idleCount, p.getIdle(), toFree, peakInUse, floor);
                 }
             }
         });
