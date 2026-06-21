@@ -23,6 +23,25 @@ group = "su.grinev"
 // Local/dev builds use the mutable SNAPSHOT; real releases come from a vX.Y.Z tag via -PreleaseVersion (CI).
 version = project.findProperty('releaseVersion') ?: "0.8.0-SNAPSHOT"
 
+// Build number — bumped on each publish (analogous to MyVPN's .build-number) and embedded in the jar manifest.
+def jbsonBuildFile = file('.build-number')
+def jbsonBuildNumber = jbsonBuildFile.exists() ? jbsonBuildFile.text.trim() : '0'
+if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('publish') }) {
+    jbsonBuildNumber = ((jbsonBuildNumber.isInteger() ? jbsonBuildNumber.toInteger() : 0) + 1).toString()
+    jbsonBuildFile.text = jbsonBuildNumber
+    logger.lifecycle("jbson build #${jbsonBuildNumber} -> ${version}")
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'jbson',
+            'Implementation-Version': version,
+            'Implementation-Build': jbsonBuildNumber
+        )
+    }
+}
+
 repositories {
     mavenCentral()
     maven { url 'https://jitpack.io' }
