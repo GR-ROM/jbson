@@ -104,6 +104,11 @@ public class AggregateWindow {
         return percentile(50.0);
     }
 
+    /** 90th percentile of stored values, or 0 if the window is empty. */
+    public int p90() {
+        return percentile(90.0);
+    }
+
     /** 95th percentile of stored values, or 0 if the window is empty. */
     public int p95() {
         return percentile(95.0);

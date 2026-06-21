@@ -20,16 +20,32 @@ jacocoTestReport {
 }
 
 group = "su.grinev"
-// Build number — bumped on each publish (.build-number); forms the dev version 0.8.0.<N>.
+
+// jbson-jdk21 variant (toggle with -Pjdk21): swaps in the Java 21 ArenaByteBuffer (allocateDirect,
+// auto-only), compiles main at release 21, and publishes as artifactId "jbson-jdk21". The Java 25 build
+// owns the build counter; the jdk21 build reuses the current number so both stay lockstep at 0.8.0.<N>.
+def jdk21 = project.hasProperty('jdk21')
+def artifactName = jdk21 ? 'jbson-jdk21' : 'jbson'
+
+// Build number — bumped on each (non-jdk21) publish (.build-number); forms the dev version 0.8.0.<N>.
 def jbsonBuildFile = file('.build-number')
 def jbsonBuildNumber = jbsonBuildFile.exists() ? jbsonBuildFile.text.trim() : '0'
-if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('publish') }) {
+if (!jdk21 && gradle.startParameter.taskNames.any { it.toLowerCase().contains('publish') }) {
     jbsonBuildNumber = ((jbsonBuildNumber.isInteger() ? jbsonBuildNumber.toInteger() : 0) + 1).toString()
     jbsonBuildFile.text = jbsonBuildNumber
 }
 // Real releases come from a vX.Y.Z tag via -PreleaseVersion (CI); dev/local builds are 0.8.0.<build>.
 version = project.findProperty('releaseVersion') ?: ("0.8.0." + jbsonBuildNumber)
-logger.lifecycle("jbson ${version}")
+logger.lifecycle("jbson ${artifactName} ${version}")
+
+if (jdk21) {
+    // Use the Java 21 ArenaByteBuffer (src/jdk21) and drop the FFM one; compile the artifact at release 21.
+    sourceSets.main.java.srcDir 'src/jdk21/java'
+    sourceSets.main.java.exclude {
+        it.file.absolutePath.replace('\\', '/').endsWith('/src/main/java/su/grinev/pool/ArenaByteBuffer.java')
+    }
+    tasks.named('compileJava') { options.release = 21 }
+}
 
 jar {
     manifest {
@@ -66,7 +82,7 @@ publishing {
         gpr(MavenPublication) {
             from components.java
             groupId = group
-            artifactId = 'jbson'
+            artifactId = artifactName
             version = version
         }
     }
@@ -136,6 +152,10 @@ test {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
     // The multi-second chaos/stress storm is not run as part of the normal suite — use `gradle chaos`.
     exclude '**/*ChaosTest*'
+    if (jdk21) {
+        // These assert FFM deterministic free / native address() — Java 25 (MANUAL) only.
+        exclude '**/ArenaByteBufferTest*', '**/DisposablePoolArenaTrimTest*', '**/PoolOptimizerIntegrationTest*'
+    }
     testLogging {
         showStandardStreams = true
     }
