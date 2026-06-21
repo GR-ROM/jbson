@@ -98,27 +98,32 @@ public class PoolOptimizerTest {
     // optimize / trim
     // ---------------------------------------------------------------------
 
+    // Strategy: keep = idle / 2; trim (idle - keep) only when keep > peak AND keep > floor.
+    // i.e. halve idle per tick as long as the retained half still exceeds peak demand and the floor.
+
     @Test
-    void optimize_trimsIdleDownToPeakDemand() {
+    void optimize_halvesIdle_whenHalfStillExceedsPeak() {
         FakeTrimmable t = new FakeTrimmable(10, 50); // peak demand 10, 50 idle
         PoolOptimizer opt = optimizerFor(t);
         opt.fillAggregateWindow();          // observed peak demand = 10
 
         opt.optimize();
 
-        assertEquals(List.of(40), t.trimCalls, "trims idle excess over peak demand: 50 - 10");
-        assertEquals(10, t.idle, "keeps just enough idle to cover the peak demand");
+        // keep = 50/2 = 25; 25 > peak(10) and > floor(0) -> trim 50-25
+        assertEquals(List.of(25), t.trimCalls, "halves idle (gradual decay)");
+        assertEquals(25, t.idle);
     }
 
     @Test
-    void optimize_doesNotTrim_whenIdleNotAbovePeak() {
-        FakeTrimmable t = new FakeTrimmable(30, 30); // idle == peak demand
+    void optimize_doesNotTrim_whenHalfNotAbovePeak() {
+        FakeTrimmable t = new FakeTrimmable(50, 100); // peak demand 50, 100 idle
         PoolOptimizer opt = optimizerFor(t);
-        opt.fillAggregateWindow();          // peak demand = 30
+        opt.fillAggregateWindow();          // peak demand = 50
 
         opt.optimize();
 
-        assertTrue(t.trimCalls.isEmpty(), "no idle excess over peak demand -> nothing trimmed");
+        // keep = 50; 50 > peak(50)? no -> nothing trimmed
+        assertTrue(t.trimCalls.isEmpty(), "won't halve when the retained half wouldn't exceed peak demand");
     }
 
     @Test
@@ -133,29 +138,29 @@ public class PoolOptimizerTest {
     }
 
     @Test
-    void optimize_doesNotTrimBelowMinPoolSize() {
-        FakeTrimmable t = new FakeTrimmable(5, 100); // peak demand 5, 100 idle
-        PoolOptimizer opt = optimizerFor(30, t);     // keep at least 30 idle
+    void optimize_floorGuard_blocksHalving_whenHalfWouldDropToFloor() {
+        FakeTrimmable t = new FakeTrimmable(5, 100); // peak 5, 100 idle
+        PoolOptimizer opt = optimizerFor(60, t);     // floor 60
         opt.fillAggregateWindow();          // peak demand = 5
 
         opt.optimize();
 
-        // idle excess over peak is 95, but the floor allows trimming only 100 - 30 = 70
-        assertEquals(List.of(70), t.trimCalls);
-        assertEquals(30, t.idle, "never shrinks idle below minPoolSize");
+        // keep = 50; 50 > floor(60)? no -> the floor guard blocks the halving
+        assertTrue(t.trimCalls.isEmpty(), "floor guard prevents halving below it");
     }
 
     @Test
-    void optimize_trimsToPeak_whenPeakAboveMinPoolSize() {
-        FakeTrimmable t = new FakeTrimmable(50, 100); // peak demand 50
-        PoolOptimizer opt = optimizerFor(20, t);      // floor 20 (below peak)
-        opt.fillAggregateWindow();          // peak demand = 50
+    void optimize_halvingConvergesAcrossTicks() {
+        FakeTrimmable t = new FakeTrimmable(0, 100); // peak 0, 100 idle, floor 0
+        PoolOptimizer opt = optimizerFor(t);
+        opt.fillAggregateWindow();          // peak demand = 0
 
-        opt.optimize();
+        opt.optimize(); // 100 -> keep 50 -> trim 50
+        opt.optimize(); //  50 -> keep 25 -> trim 25
+        opt.optimize(); //  25 -> keep 12 -> trim 13
 
-        // peak (50) dominates the floor (20): trim idle down to 50
-        assertEquals(List.of(50), t.trimCalls);
-        assertEquals(50, t.idle);
+        assertEquals(List.of(50, 25, 13), t.trimCalls, "each tick halves the idle pool");
+        assertEquals(12, t.idle);
     }
 
     @Test
@@ -169,10 +174,11 @@ public class PoolOptimizerTest {
 
         opt.optimize();
 
-        assertEquals(List.of(80), big.trimCalls, "big pool trimmed down to its floor 20");
-        assertEquals(20, big.idle);
-        assertEquals(List.of(20), small.trimCalls, "small pool trimmed down to its floor 80");
-        assertEquals(80, small.idle);
+        // big: keep 50 > floor 20 -> trim 50; small: keep 50 > floor 80? no -> no trim
+        assertEquals(List.of(50), big.trimCalls, "big pool (low floor) is halved");
+        assertEquals(50, big.idle);
+        assertTrue(small.trimCalls.isEmpty(), "small pool (high floor) is left alone");
+        assertEquals(100, small.idle);
     }
 
     @Test
@@ -189,27 +195,27 @@ public class PoolOptimizerTest {
 
     @Test
     void optimize_handlesMultiplePoolsIndependently() {
-        FakeTrimmable a = new FakeTrimmable(10, 50); // 40 idle excess over peak 10
-        FakeTrimmable b = new FakeTrimmable(30, 30); // idle == peak, no excess
+        FakeTrimmable a = new FakeTrimmable(10, 50); // half (25) > peak 10 -> halved
+        FakeTrimmable b = new FakeTrimmable(30, 30); // half (15) < peak 30 -> untouched
         PoolOptimizer opt = optimizerFor(a, b);
         opt.fillAggregateWindow();          // peaks: a=10, b=30
 
         opt.optimize();
 
-        assertEquals(List.of(40), a.trimCalls);
+        assertEquals(List.of(25), a.trimCalls);
         assertTrue(b.trimCalls.isEmpty());
     }
 
     @Test
-    void optimize_beforeAnySampling_treatsAllIdleAsExcess() {
-        // empty window -> peak demand 0, so all idle objects look like excess.
+    void optimize_beforeAnySampling_halvesIdle() {
+        // empty window -> peak demand 0, so a non-empty idle pool gets halved.
         FakeTrimmable t = new FakeTrimmable(0, 5);
         PoolOptimizer opt = optimizerFor(t);
 
-        opt.optimize(); // no samples yet: peak == 0, idle 5 > 0 -> trims 5
+        opt.optimize(); // peak 0, keep = 5/2 = 2; 2 > 0 -> trim 5-2
 
-        assertEquals(List.of(5), t.trimCalls,
-                "with no samples the peak demand is 0, so all idle looks like excess");
+        assertEquals(List.of(3), t.trimCalls);
+        assertEquals(2, t.idle);
     }
 
     // ---------------------------------------------------------------------

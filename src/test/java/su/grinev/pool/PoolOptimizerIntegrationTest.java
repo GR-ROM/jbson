@@ -30,7 +30,7 @@ public class PoolOptimizerIntegrationTest {
      * peak (5), closing exactly 5 arenas.
      */
     @Test
-    void optimize_trimsRealArenaPool_downToPeakDemand() {
+    void optimize_halvesRealArenaPool_freeingArenas() {
         DisposablePool<ArenaByteBuffer> pool = arenaPool();
         PoolOptimizer opt = new PoolOptimizer(List.<Trimmable>of(pool), 300, 0, false); // manual ticks
 
@@ -38,30 +38,17 @@ public class PoolOptimizerIntegrationTest {
         for (int i = 0; i < 10; i++) {
             all.add(pool.get());
         }
-        // release half: 5 in use, 5 idle, 10 owned
-        for (int i = 0; i < 5; i++) {
-            pool.release(all.get(i));
-        }
-        assertEquals(5, pool.getCount(), "5 in use at sampling time");
-
-        opt.fillAggregateWindow(); // observed peak demand = 5
-
-        // release the rest: 10 idle, 0 in use, 10 owned
-        for (int i = 5; i < 10; i++) {
-            pool.release(all.get(i));
-        }
+        all.forEach(pool::release);     // 10 idle, 0 in use, 10 owned
         assertEquals(10, pool.getIdle());
         assertEquals(10, pool.getCurrentPoolSize());
 
-        opt.optimize(); // idle 10 > peak 5 -> trim 5, closing 5 arenas
+        opt.fillAggregateWindow(); // peak demand sampled at 0 (pool idle)
+        opt.optimize();            // keep = 5 > peak 0 -> trim 5, closing 5 arenas
 
-        assertEquals(5, pool.getIdle(), "idle trimmed down to the peak demand");
+        assertEquals(5, pool.getIdle(), "idle halved");
         assertEquals(5, pool.getCurrentPoolSize(), "owned dropped by the 5 freed buffers");
-
-        long alive = all.stream().filter(ArenaByteBuffer::isAlive).count();
-        long closed = all.stream().filter(b -> !b.isAlive()).count();
-        assertEquals(5, alive, "5 buffers remain pooled and alive");
-        assertEquals(5, closed, "5 buffers had their native arena closed");
+        assertEquals(5, all.stream().filter(ArenaByteBuffer::isAlive).count(), "5 buffers remain pooled");
+        assertEquals(5, all.stream().filter(b -> !b.isAlive()).count(), "5 buffers had their native arena closed");
     }
 
     /**
@@ -71,7 +58,7 @@ public class PoolOptimizerIntegrationTest {
      * closing the other 5 — all on the background thread, on real time.
      */
     @Test
-    void scheduledOptimizer_reclaimsIdleArenas_downToMinPoolSize() throws Exception {
+    void scheduledOptimizer_halvesIdleArenas_convergingAboveFloor() throws Exception {
         DisposablePool<ArenaByteBuffer> pool = arenaPool();
 
         List<ArenaByteBuffer> all = new ArrayList<>();
@@ -82,19 +69,19 @@ public class PoolOptimizerIntegrationTest {
         assertEquals(8, pool.getIdle());
         assertEquals(8, pool.getCurrentPoolSize());
 
-        // idlePeriodSeconds=1, minPoolSize floor=3, scheduler ON
+        // idlePeriodSeconds=1, floor=3: 8 -> keep 4 (>3) -> trim to 4; then keep 2 (<3) -> stop at 4.
         PoolOptimizer opt = new PoolOptimizer(List.<Trimmable>of(pool), 1, 3);
         try {
             long deadline = System.currentTimeMillis() + 15_000;
-            while (pool.getCurrentPoolSize() > 3 && System.currentTimeMillis() < deadline) {
+            while (pool.getCurrentPoolSize() > 4 && System.currentTimeMillis() < deadline) {
                 Thread.sleep(50);
             }
 
-            assertEquals(3, pool.getCurrentPoolSize(), "scheduler trimmed idle arenas down to minPoolSize");
-            assertEquals(3, pool.getIdle());
+            assertEquals(4, pool.getCurrentPoolSize(), "halving converges and stops above the floor");
+            assertEquals(4, pool.getIdle());
             assertEquals(0, pool.getCount());
-            assertEquals(5, all.stream().filter(b -> !b.isAlive()).count(),
-                    "the 5 reclaimed buffers had their arenas closed");
+            assertEquals(4, all.stream().filter(b -> !b.isAlive()).count(),
+                    "the 4 reclaimed buffers had their arenas closed");
         } finally {
             opt.shutdown();
         }

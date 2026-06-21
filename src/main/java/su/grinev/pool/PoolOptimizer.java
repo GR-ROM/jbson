@@ -61,8 +61,9 @@ public class PoolOptimizer {
             int peakInUse = pool.aggregateWindow.max();
             int idleCount = pool.trimmablePool.getIdle();
             int floor = minPoolSize.applyAsInt(pool.trimmablePool);
-            if (idleCount > peakInUse) {
-                pool.trimmablePool.trim(Math.min(idleCount - peakInUse, idleCount - floor));
+            int toFreeCount = idleCount / 2;
+            if (toFreeCount > peakInUse && toFreeCount > floor) {
+                pool.trimmablePool.trim(idleCount - toFreeCount);
             }
         });
     }
