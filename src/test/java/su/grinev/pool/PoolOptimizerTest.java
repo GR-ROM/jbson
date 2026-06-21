@@ -103,20 +103,20 @@ public class PoolOptimizerTest {
     // optimize / trim
     // ---------------------------------------------------------------------
 
-    // Strategy: toFree = idle / 16; trim toFree only when toFree > 0 AND (idle - toFree) > peak AND > floor.
-    // i.e. free 1/16 of idle per tick (gradual decay) as long as the retained 15/16 still exceeds peak and floor.
+    // Strategy: toFree = idle / 10; trim toFree only when toFree > 0 AND (idle - toFree) > peak AND > floor.
+    // i.e. free 1/10 of idle per tick (gradual decay) as long as the retained 9/10 still exceeds peak and floor.
 
     @Test
-    void optimize_freesOneSixteenth_whenSafe() {
+    void optimize_freesAGradualSlice_whenSafe() {
         FakeTrimmable t = new FakeTrimmable(0, 160); // peak 0, 160 idle, floor 0
         PoolOptimizer opt = optimizerFor(t);
         opt.fillAggregateWindow();          // observed peak demand = 0
 
         opt.optimize();
 
-        // toFree = 160/16 = 10; keep 150 > peak(0) and > floor(0)
-        assertEquals(List.of(10), t.trimCalls, "frees 1/16 of idle (gradual decay)");
-        assertEquals(150, t.idle);
+        // toFree = 160/10 = 16; keep 144 > peak(0) and > floor(0)
+        assertEquals(List.of(16), t.trimCalls, "frees 1/10 of idle (gradual decay)");
+        assertEquals(144, t.idle);
     }
 
     @Test
@@ -127,8 +127,8 @@ public class PoolOptimizerTest {
 
         opt.optimize();
 
-        // toFree = 1, keep 15; 15 > peak(20)? no -> nothing trimmed
-        assertTrue(t.trimCalls.isEmpty(), "won't trim when the retained 15/16 wouldn't exceed peak demand");
+        // toFree = 16/10 = 1, keep 15; 15 > peak(20)? no -> nothing trimmed
+        assertTrue(t.trimCalls.isEmpty(), "won't trim when the retained 9/10 wouldn't exceed peak demand");
     }
 
     @Test
@@ -150,19 +150,19 @@ public class PoolOptimizerTest {
 
         opt.optimize();
 
-        // toFree = 6, keep 94; 94 > floor(95)? no -> the floor guard blocks the trim
+        // toFree = 100/10 = 10, keep 90; 90 > floor(95)? no -> the floor guard blocks the trim
         assertTrue(t.trimCalls.isEmpty(), "floor guard prevents trimming below it");
     }
 
     @Test
     void optimize_doesNotTrim_whenIdleTooSmall() {
-        FakeTrimmable t = new FakeTrimmable(0, 10); // idle < 16 -> toFree = 0
+        FakeTrimmable t = new FakeTrimmable(0, 9); // idle < 10 -> toFree = 0
         PoolOptimizer opt = optimizerFor(t);
         opt.fillAggregateWindow();
 
         opt.optimize();
 
-        assertTrue(t.trimCalls.isEmpty(), "below 16 idle, 1/16 rounds to 0 -> nothing trimmed");
+        assertTrue(t.trimCalls.isEmpty(), "below 10 idle, 1/10 rounds to 0 -> nothing trimmed");
     }
 
     @Test
@@ -171,12 +171,12 @@ public class PoolOptimizerTest {
         PoolOptimizer opt = optimizerFor(t);
         opt.fillAggregateWindow();          // peak demand = 0
 
-        opt.optimize(); // 160 -> free 10 -> 150
-        opt.optimize(); // 150 -> free  9 -> 141
-        opt.optimize(); // 141 -> free  8 -> 133
+        opt.optimize(); // 160 -> free 16 -> 144
+        opt.optimize(); // 144 -> free 14 -> 130
+        opt.optimize(); // 130 -> free 13 -> 117
 
-        assertEquals(List.of(10, 9, 8), t.trimCalls, "each tick frees 1/16 — gradual decay");
-        assertEquals(133, t.idle);
+        assertEquals(List.of(16, 14, 13), t.trimCalls, "each tick frees 1/10 — gradual decay");
+        assertEquals(117, t.idle);
     }
 
     @Test
@@ -190,9 +190,9 @@ public class PoolOptimizerTest {
 
         opt.optimize();
 
-        // big: toFree 10, keep 150 > floor 20 -> trim 10; small: keep 150 > floor 155? no -> no trim
-        assertEquals(List.of(10), big.trimCalls, "big pool (low floor) is trimmed");
-        assertEquals(150, big.idle);
+        // big: toFree 16, keep 144 > floor 20 -> trim 16; small: keep 144 > floor 155? no -> no trim
+        assertEquals(List.of(16), big.trimCalls, "big pool (low floor) is trimmed");
+        assertEquals(144, big.idle);
         assertTrue(small.trimCalls.isEmpty(), "small pool (high floor) is left alone");
         assertEquals(160, small.idle);
     }
@@ -211,27 +211,27 @@ public class PoolOptimizerTest {
 
     @Test
     void optimize_handlesMultiplePoolsIndependently() {
-        FakeTrimmable a = new FakeTrimmable(0, 160);  // keep 150 > peak 0 -> trimmed
+        FakeTrimmable a = new FakeTrimmable(0, 160);  // keep 144 > peak 0 -> trimmed
         FakeTrimmable b = new FakeTrimmable(20, 16);  // keep 15 < peak 20 -> untouched
         PoolOptimizer opt = optimizerFor(a, b);
         opt.fillAggregateWindow();          // peaks: a=0, b=20
 
         opt.optimize();
 
-        assertEquals(List.of(10), a.trimCalls);
+        assertEquals(List.of(16), a.trimCalls);
         assertTrue(b.trimCalls.isEmpty());
     }
 
     @Test
-    void optimize_beforeAnySampling_freesOneSixteenth() {
-        // empty window -> peak demand 0, so a sufficiently-large idle pool gets a 1/16 slice freed.
+    void optimize_beforeAnySampling_freesAGradualSlice() {
+        // empty window -> peak demand 0, so a sufficiently-large idle pool gets a 1/10 slice freed.
         FakeTrimmable t = new FakeTrimmable(0, 160);
         PoolOptimizer opt = optimizerFor(t);
 
-        opt.optimize(); // peak 0, toFree = 160/16 = 10
+        opt.optimize(); // peak 0, toFree = 160/10 = 16
 
-        assertEquals(List.of(10), t.trimCalls);
-        assertEquals(150, t.idle);
+        assertEquals(List.of(16), t.trimCalls);
+        assertEquals(144, t.idle);
     }
 
     // ---------------------------------------------------------------------

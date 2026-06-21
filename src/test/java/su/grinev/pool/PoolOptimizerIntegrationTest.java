@@ -43,19 +43,20 @@ public class PoolOptimizerIntegrationTest {
         assertEquals(160, pool.getCurrentPoolSize());
 
         opt.fillAggregateWindow(); // peak demand sampled at 0 (pool idle)
-        opt.optimize();            // toFree = 160/16 = 10 -> trim 10, closing 10 arenas
+        opt.optimize();            // toFree = 160/10 = 16 -> trim 16, closing 16 arenas
 
-        assertEquals(150, pool.getIdle(), "1/16 of idle freed");
-        assertEquals(150, pool.getCurrentPoolSize(), "owned dropped by the 10 freed buffers");
-        assertEquals(150, all.stream().filter(ArenaByteBuffer::isAlive).count(), "150 buffers remain pooled");
-        assertEquals(10, all.stream().filter(b -> !b.isAlive()).count(), "10 buffers had their native arena closed");
+        assertEquals(144, pool.getIdle(), "1/10 of idle freed");
+        assertEquals(144, pool.getCurrentPoolSize(), "owned dropped by the 16 freed buffers");
+        assertEquals(144, all.stream().filter(ArenaByteBuffer::isAlive).count(), "144 buffers remain pooled");
+        assertEquals(16, all.stream().filter(b -> !b.isAlive()).count(), "16 buffers had their native arena closed");
     }
 
     /**
-     * Through the real scheduler: 8 buffers are created then released (so the pool
-     * holds 8 idle arenas) before the optimizer starts. It then samples zero demand
-     * and, on its idle tick, reclaims the idle arenas down to minPoolSize (3),
-     * closing the other 5 — all on the background thread, on real time.
+     * Through the real scheduler: 64 buffers are created then released (so the pool
+     * holds 64 idle arenas) before the optimizer starts. It then samples zero demand
+     * and, on each idle tick, frees a 1/10 slice — gradually reclaiming the idle
+     * arenas down toward the floor (32), closing each freed buffer's arena, all on
+     * the background thread, on real time.
      */
     @Test
     void scheduledOptimizer_graduallyReclaimsIdleArenas() throws Exception {
