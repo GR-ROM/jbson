@@ -63,8 +63,8 @@ public class ArenaByteBufferTest {
     }
 
     @Test
-    void destroy_releasesMemory_andMakesAccessFail() {
-        ArenaByteBuffer b = new ArenaByteBuffer(64);
+    void manualDestroy_releasesMemory_andMakesAccessFail() {
+        ArenaByteBuffer b = new ArenaByteBuffer(64, ArenaByteBuffer.Release.MANUAL);
         assertTrue(b.isAlive());
 
         b.destroy();
@@ -72,6 +72,17 @@ public class ArenaByteBufferTest {
         assertFalse(b.isAlive(), "arena closed -> memory released");
         assertThrows(IllegalStateException.class, () -> b.getBuffer().getInt(0),
                 "accessing a buffer after its arena is closed must fail");
+    }
+
+    @Test
+    void autoMode_destroyIsNoop_andMemoryStaysUsable() {
+        ArenaByteBuffer b = new ArenaByteBuffer(64); // AUTO is the default
+        b.getBuffer().putInt(0, 123);
+
+        b.destroy(); // no-op in AUTO mode — the GC owns the lifecycle
+
+        assertTrue(b.isAlive(), "AUTO buffer is GC-managed; destroy() must not free it");
+        assertEquals(123, b.getBuffer().getInt(0), "buffer remains usable after a no-op destroy");
     }
 
     @Test
@@ -100,19 +111,19 @@ public class ArenaByteBufferTest {
     }
 
     @Test
-    void destroy_isIdempotent() {
-        ArenaByteBuffer b = new ArenaByteBuffer(16);
+    void manualDestroy_isIdempotent() {
+        ArenaByteBuffer b = new ArenaByteBuffer(16, ArenaByteBuffer.Release.MANUAL);
         b.destroy();
         assertDoesNotThrow(b::destroy, "a second destroy must be a safe no-op");
     }
 
     /**
-     * Regression: {@link DynamicByteBuffer#destroy()} used to only null the view and leak the
-     * arena (Arena.ofShared() is not GC-reclaimed). It must now close the arena.
+     * Regression: in MANUAL mode {@link DynamicByteBuffer#destroy()} must close the arena
+     * (Arena.ofShared() is not GC-reclaimed, so it would otherwise leak).
      */
     @Test
-    void dynamicByteBuffer_destroy_closesArena() {
-        DynamicByteBuffer b = new DynamicByteBuffer(64);
+    void dynamicByteBuffer_manualDestroy_closesArena() {
+        DynamicByteBuffer b = new DynamicByteBuffer(64, ArenaByteBuffer.Release.MANUAL);
         assertTrue(b.isAlive());
 
         b.destroy();

@@ -10,9 +10,14 @@ public class DynamicByteBuffer extends ArenaByteBuffer implements Disposable {
         super(capacity);
     }
 
+    /** Explicit release mode (AUTO = GC-managed default, MANUAL = deterministic destroy()). */
+    public DynamicByteBuffer(int capacity, Release release) {
+        super(capacity, release);
+    }
+
     /**
      * Compatibility constructor: arena-backed memory is always native, so the
-     * {@code direct} flag is no longer meaningful and is ignored.
+     * {@code direct} flag is no longer meaningful and is ignored. Defaults to AUTO release.
      */
     public DynamicByteBuffer(int capacity, boolean direct) {
         super(capacity);

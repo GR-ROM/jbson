@@ -21,7 +21,8 @@ public class PoolOptimizerIntegrationTest {
                 .setBlocking(false)
                 .setOutOfPoolTimeout(0)
                 .build();
-        return factory.getDisposablePool(() -> new ArenaByteBuffer(64));
+        // MANUAL mode so the optimizer's trim() deterministically closes each freed buffer's arena.
+        return factory.getDisposablePool(() -> new ArenaByteBuffer(64, ArenaByteBuffer.Release.MANUAL));
     }
 
     /**

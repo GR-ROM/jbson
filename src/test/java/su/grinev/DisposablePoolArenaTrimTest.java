@@ -25,7 +25,8 @@ public class DisposablePoolArenaTrimTest {
                 .setOutOfPoolTimeout(1000)
                 .setBlocking(false)
                 .build();
-        return factory.getDisposablePool(() -> new ArenaByteBuffer(64));
+        // MANUAL mode: trim() must deterministically close each freed buffer's arena.
+        return factory.getDisposablePool(() -> new ArenaByteBuffer(64, ArenaByteBuffer.Release.MANUAL));
     }
 
     @Test

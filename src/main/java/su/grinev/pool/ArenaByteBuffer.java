@@ -14,28 +14,35 @@ import java.nio.ByteOrder;
  * never reallocates as long as the content fits, which is the intended (and
  * common) case for a pooled buffer reused many times.
  *
- * {@link #ensureCapacity(int)} is only a safety net: if the content ever
- * outgrows the preallocated capacity it falls back to allocating a larger
- * segment from a fresh arena, copying the content over, and closing the old
- * arena. FFM segments cannot be resized in place, and an arena releases its
- * memory only on {@code close()} — so growth necessarily means
- * realloc-and-close, never an in-place resize. Preallocation keeps that path
- * off the hot path entirely.
+ * Release mode (see {@link Release}):
+ * <ul>
+ *   <li><b>AUTO</b> (default) — {@code Arena.ofAuto()}: the GC frees the native segment when the buffer
+ *       becomes unreachable, exactly like a direct {@link ByteBuffer}'s cleaner. {@link #destroy()} is a
+ *       no-op. Safe by construction — a dropped buffer never leaks. This is also the only mode that does
+ *       not require the FFM {@code Arena.of{Shared,Confined}} API, so it is the path a Java 21 build uses.</li>
+ *   <li><b>MANUAL</b> — {@code Arena.ofShared()}: {@link #destroy()} frees the segment deterministically.
+ *       A {@link Cleaner} closes the arena if the buffer is dropped without {@code destroy()} (ofShared
+ *       memory is otherwise never reclaimed by the GC). Use only when you take explicit ownership and want
+ *       to reclaim native memory the instant you are done with it.</li>
+ * </ul>
  *
- * Lifecycle: {@link #dispose()} recycles the buffer back to its pool;
- * {@link #destroy()} closes the arena and frees the native memory
- * deterministically. As a safety net against leaks, a {@link Cleaner} closes the
- * arena if the buffer is dropped (garbage-collected) without {@code destroy()} —
- * {@code Arena.ofShared()} memory is otherwise never reclaimed by the GC.
+ * {@link #ensureCapacity(int)} is only a safety net: if the content ever outgrows the preallocated
+ * capacity it allocates a larger segment from a fresh arena and copies the content over (MANUAL closes the
+ * old arena immediately; AUTO leaves it to the GC). FFM segments cannot be resized in place.
+ *
+ * {@link #dispose()} recycles the buffer back to its pool — orthogonal to the release mode.
  */
 public class ArenaByteBuffer implements Disposable {
+
+    /** Native-memory reclamation strategy. */
+    public enum Release { AUTO, MANUAL }
 
     private static final Cleaner CLEANER = Cleaner.create();
 
     /**
-     * Holds the live arena for the {@link Cleaner}. Kept in a separate object that
-     * does NOT reference the enclosing {@link ArenaByteBuffer} (otherwise the buffer
-     * could never become unreachable and the cleaner would never run).
+     * Holds the live arena for the {@link Cleaner} (MANUAL mode only). Kept in a separate object that does
+     * NOT reference the enclosing {@link ArenaByteBuffer} (otherwise the buffer could never become
+     * unreachable and the cleaner would never run).
      */
     private static final class ArenaHolder implements Runnable {
         private Arena arena;
@@ -54,18 +61,36 @@ public class ArenaByteBuffer implements Disposable {
         }
     }
 
+    private final Release release;
     private Runnable onDispose;
-    private final ArenaHolder holder;
-    private final Cleaner.Cleanable cleanable;
+    private final ArenaHolder holder;          // MANUAL only (null in AUTO)
+    private final Cleaner.Cleanable cleanable; // MANUAL only (null in AUTO)
+    private Arena arena;
     private MemorySegment segment;
     protected ByteBuffer buffer;
 
+    /** GC-managed (AUTO) buffer — the safe default. */
     public ArenaByteBuffer(int capacity) {
-        this.holder = new ArenaHolder();
-        this.holder.arena = Arena.ofShared();
-        this.segment = holder.arena.allocate(capacity);
+        this(capacity, Release.AUTO);
+    }
+
+    public ArenaByteBuffer(int capacity, Release release) {
+        this.release = release;
+        this.arena = newArena();
+        this.segment = arena.allocate(capacity);
         this.buffer = segment.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
-        this.cleanable = CLEANER.register(this, holder);
+        if (release == Release.MANUAL) {
+            this.holder = new ArenaHolder();
+            this.holder.arena = arena;
+            this.cleanable = CLEANER.register(this, holder);
+        } else {
+            this.holder = null;
+            this.cleanable = null;
+        }
+    }
+
+    private Arena newArena() {
+        return release == Release.MANUAL ? Arena.ofShared() : Arena.ofAuto();
     }
 
     /** Capacity of the preallocated native segment in bytes. Writes up to this size never reallocate. */
@@ -85,16 +110,19 @@ public class ArenaByteBuffer implements Disposable {
         int used = buffer.position();
         int newCapacity = Math.max(capacity() * 2, used + additionalCapacity);
 
-        Arena newArena = Arena.ofShared();
+        Arena newArena = newArena();
         MemorySegment newSegment = newArena.allocate(newCapacity);
         MemorySegment.copy(segment, 0, newSegment, 0, used);
 
-        Arena oldArena = holder.arena;
-        holder.arena = newArena;     // the cleaner now tracks the new arena
+        Arena oldArena = arena;
+        this.arena = newArena;
         this.segment = newSegment;
         this.buffer = newSegment.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
         this.buffer.position(used);
-        oldArena.close();            // free the old segment now (deterministic)
+        if (release == Release.MANUAL) {
+            holder.arena = newArena;   // the cleaner now tracks the new arena
+            oldArena.close();          // free the old segment now; AUTO leaves it to the GC
+        }
     }
 
     public ByteBuffer getBuffer() {
@@ -106,7 +134,7 @@ public class ArenaByteBuffer implements Disposable {
         return segment.address();
     }
 
-    /** Whether the backing native memory is still allocated (arena not yet closed). */
+    /** Whether the backing native memory is still allocated (MANUAL: arena not yet closed; AUTO: until GC). */
     public boolean isAlive() {
         return segment.scope().isAlive();
     }
@@ -125,8 +153,10 @@ public class ArenaByteBuffer implements Disposable {
 
     @Override
     public void destroy() {
-        // Deterministic free: runs the holder (closes the arena) once and deregisters the cleaner.
-        cleanable.clean();
+        // Deterministic free only in MANUAL mode; AUTO is reclaimed by the GC.
+        if (release == Release.MANUAL) {
+            cleanable.clean();
+        }
     }
 
     @Override
