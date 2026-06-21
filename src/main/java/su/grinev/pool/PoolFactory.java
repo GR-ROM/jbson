@@ -43,7 +43,16 @@ public class PoolFactory {
 
     /** Create a pool with an explicit prefill (warm baseline) instead of the factory's default minPoolSize. */
     public <T> FastPool<T> getPool(String name, Supplier<T> supplier, int initialSize) {
-        FastPool<T> pool = new FastPool<>(name, supplier, item -> {}, initialSize, maxPoolSize, blocking, outOfPoolTimeout);
+        return getPool(name, supplier, initialSize, maxPoolSize);
+    }
+
+    /**
+     * Create a pool with an explicit prefill and an explicit per-pool ceiling (overriding the factory's
+     * default maxPoolSize). Use a small ceiling for large buffers and a large one for small buffers so a
+     * full pool stays within the memory budget.
+     */
+    public <T> FastPool<T> getPool(String name, Supplier<T> supplier, int initialSize, int maxSize) {
+        FastPool<T> pool = new FastPool<>(name, supplier, item -> {}, initialSize, maxSize, blocking, outOfPoolTimeout);
         pools.put(name, pool);
         return pool;
     }
@@ -67,7 +76,12 @@ public class PoolFactory {
 
     /** Create a disposable pool with an explicit prefill (warm baseline) instead of the factory's default minPoolSize. */
     public <T extends Disposable> DisposablePool<T> getDisposablePool(String name, Supplier<T> supplier, int initialSize) {
-        DisposablePool<T> disposablePool = new DisposablePool<>(name, supplier, initialSize, maxPoolSize, blocking, outOfPoolTimeout);
+        return getDisposablePool(name, supplier, initialSize, maxPoolSize);
+    }
+
+    /** Create a disposable pool with an explicit prefill and an explicit per-pool ceiling (see {@link #getPool(String, Supplier, int, int)}). */
+    public <T extends Disposable> DisposablePool<T> getDisposablePool(String name, Supplier<T> supplier, int initialSize, int maxSize) {
+        DisposablePool<T> disposablePool = new DisposablePool<>(name, supplier, initialSize, maxSize, blocking, outOfPoolTimeout);
         pools.put(name, disposablePool);
         return disposablePool;
     }

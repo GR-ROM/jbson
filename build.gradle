@@ -42,6 +42,21 @@ jar {
     }
 }
 
+// Expose version + build number at runtime (read by su.grinev.JbsonBuild) so consumers can log which build they run.
+def jbsonBuildInfoDir = layout.buildDirectory.dir("generated/build-info")
+def genJbsonBuildInfo = tasks.register('genJbsonBuildInfo') {
+    inputs.property('version', version)
+    inputs.property('build', jbsonBuildNumber)
+    outputs.dir(jbsonBuildInfoDir)
+    doLast {
+        def f = jbsonBuildInfoDir.get().file('jbson-build.properties').asFile
+        f.parentFile.mkdirs()
+        f.text = "version=${version}\nbuild=${jbsonBuildNumber}\n"
+    }
+}
+sourceSets.main.resources.srcDir(jbsonBuildInfoDir)
+tasks.named('processResources') { dependsOn genJbsonBuildInfo }
+
 repositories {
     mavenCentral()
     maven { url 'https://jitpack.io' }
