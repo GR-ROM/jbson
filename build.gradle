@@ -20,17 +20,16 @@ jacocoTestReport {
 }
 
 group = "su.grinev"
-// Local/dev builds use the mutable SNAPSHOT; real releases come from a vX.Y.Z tag via -PreleaseVersion (CI).
-version = project.findProperty('releaseVersion') ?: "0.8.0-SNAPSHOT"
-
-// Build number — bumped on each publish (analogous to MyVPN's .build-number) and embedded in the jar manifest.
+// Build number — bumped on each publish (.build-number); forms the dev version 0.8.0.<N>.
 def jbsonBuildFile = file('.build-number')
 def jbsonBuildNumber = jbsonBuildFile.exists() ? jbsonBuildFile.text.trim() : '0'
 if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('publish') }) {
     jbsonBuildNumber = ((jbsonBuildNumber.isInteger() ? jbsonBuildNumber.toInteger() : 0) + 1).toString()
     jbsonBuildFile.text = jbsonBuildNumber
-    logger.lifecycle("jbson build #${jbsonBuildNumber} -> ${version}")
 }
+// Real releases come from a vX.Y.Z tag via -PreleaseVersion (CI); dev/local builds are 0.8.0.<build>.
+version = project.findProperty('releaseVersion') ?: ("0.8.0." + jbsonBuildNumber)
+logger.lifecycle("jbson ${version}")
 
 jar {
     manifest {
