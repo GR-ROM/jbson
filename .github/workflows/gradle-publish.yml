@@ -1,8 +1,9 @@
 name: Publish package to GitHub Packages
 
-# Publishes su.grinev:jbson to GitHub Packages whenever a version tag (v*) is pushed.
-# The version is taken from the tag name (v0.6.8 -> 0.6.8) and passed to build.gradle
-# via -PreleaseVersion. Uses the auto-provisioned GITHUB_TOKEN — no personal token needed.
+# Publishes both su.grinev:jbson (Java 25, FFM) and su.grinev:jbson-jdk21 (Java 21, allocateDirect)
+# to GitHub Packages whenever a version tag (v*) is pushed. The version is taken from the tag name
+# (v0.8.0 -> 0.8.0) and passed to build.gradle via -PreleaseVersion. The jdk21 variant adds -Pjdk21.
+# Uses the auto-provisioned GITHUB_TOKEN (write:packages) — no personal token needed.
 #
 # Release flow:
 #   1. bump the default version in build.gradle (optional; the tag is authoritative)
@@ -36,8 +37,14 @@ jobs:
         id: version
         run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Publish to GitHub Packages
+      - name: Publish jbson (Java 25) to GitHub Packages
         run: ./gradlew publish -PreleaseVersion=${{ steps.version.outputs.value }} --no-daemon --stacktrace
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish jbson-jdk21 (Java 21 variant) to GitHub Packages
+        run: ./gradlew publish -Pjdk21 -PreleaseVersion=${{ steps.version.outputs.value }} --no-daemon --stacktrace
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
