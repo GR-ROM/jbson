@@ -106,6 +106,11 @@ public class FastPool<T> implements Trimmable {
 
     // --- Trimmable ---
 
+    @Override
+    public String getName() {
+        return name;
+    }
+
     /** Objects currently in use (checked out) — the demand signal sampled by the optimizer. */
     @Override
     public int getCount() {

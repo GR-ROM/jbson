@@ -32,6 +32,11 @@ public class PoolOptimizerTest {
         }
 
         @Override
+        public String getName() {
+            return "fake";
+        }
+
+        @Override
         public int getCount() {
             return inUse;
         }

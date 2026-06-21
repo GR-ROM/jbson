@@ -1,5 +1,8 @@
 package su.grinev.pool;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -9,41 +12,55 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.ToIntFunction;
 
 /**
- * Periodically samples each monitored pool's size into a rolling
- * {@link AggregateWindow} and, less frequently, shrinks any pool that holds
- * more than its observed peak demand — releasing the excess (and, for
- * arena-backed pools, the underlying native memory) during long idle periods.
+ * Periodically samples each monitored pool's in-use count into a rolling
+ * {@link AggregateWindow} of {@code windowSeconds} samples (one per second) and,
+ * every {@code idlePeriodSeconds}, gradually halves any pool whose retained half
+ * would still exceed both the windowed peak demand and the per-pool floor —
+ * releasing the excess (and, for arena-backed pools, native memory) when demand
+ * drops. A shorter window forgets demand spikes faster, so pools reclaim sooner.
  */
 public class PoolOptimizer {
-    private static final int MAX_IDLE_WINDOW_SEC = 3600;
+    private static final Logger log = LoggerFactory.getLogger(PoolOptimizer.class);
+    private static final int DEFAULT_WINDOW_SEC = 3600;
     private static final int SAMPLE_PERIOD_SEC = 1;
 
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
     private final List<MonitoredPool> pools;
     private final ToIntFunction<Trimmable> minPoolSize;
 
-    /** Uniform floor: every pool is kept at no fewer than {@code minPoolSize} idle objects. */
+    /** Uniform floor, default 1-hour window. */
     public PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, int minPoolSize) {
-        this(pools, idlePeriodSeconds, minPoolSize, true);
+        this(pools, DEFAULT_WINDOW_SEC, idlePeriodSeconds, p -> minPoolSize, true);
     }
 
-    /** Per-pool floor: {@code minPoolSize} maps each pool to the size below which it is never trimmed. */
+    /** Per-pool floor, default 1-hour window. */
     public PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, ToIntFunction<Trimmable> minPoolSize) {
-        this(pools, idlePeriodSeconds, minPoolSize, true);
+        this(pools, DEFAULT_WINDOW_SEC, idlePeriodSeconds, minPoolSize, true);
+    }
+
+    /** Per-pool floor with a configurable peak-demand window (seconds). */
+    public PoolOptimizer(Collection<Trimmable> pools, int windowSeconds, int idlePeriodSeconds, ToIntFunction<Trimmable> minPoolSize) {
+        this(pools, windowSeconds, idlePeriodSeconds, minPoolSize, true);
     }
 
     /** Package-private: tests build the optimizer without starting the background scheduler. */
     PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, int minPoolSize, boolean start) {
-        this(pools, idlePeriodSeconds, p -> minPoolSize, start);
+        this(pools, DEFAULT_WINDOW_SEC, idlePeriodSeconds, p -> minPoolSize, start);
     }
 
     PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, ToIntFunction<Trimmable> minPoolSize, boolean start) {
+        this(pools, DEFAULT_WINDOW_SEC, idlePeriodSeconds, minPoolSize, start);
+    }
+
+    PoolOptimizer(Collection<Trimmable> pools, int windowSeconds, int idlePeriodSeconds, ToIntFunction<Trimmable> minPoolSize, boolean start) {
         this.minPoolSize = minPoolSize;
         this.pools = new ArrayList<>(pools.size());
         pools.forEach(pool ->
-                this.pools.add(new MonitoredPool(new AggregateWindow(MAX_IDLE_WINDOW_SEC), pool)));
+                this.pools.add(new MonitoredPool(new AggregateWindow(Math.max(windowSeconds, 1)), pool)));
 
         if (start) {
+            log.info("PoolOptimizer started: {} pools, {}s peak window, optimize every {}s",
+                    this.pools.size(), windowSeconds, idlePeriodSeconds);
             executor.scheduleAtFixedRate(this::fillAggregateWindow, SAMPLE_PERIOD_SEC, SAMPLE_PERIOD_SEC, TimeUnit.SECONDS);
             executor.scheduleAtFixedRate(this::optimize, idlePeriodSeconds, idlePeriodSeconds, TimeUnit.SECONDS);
         }
@@ -55,15 +72,20 @@ public class PoolOptimizer {
 
     void optimize() {
         pools.forEach(pool -> {
-            if (!pool.trimmablePool.isTrimmable()) {
+            Trimmable p = pool.trimmablePool;
+            if (!p.isTrimmable()) {
                 return;
             }
             int peakInUse = pool.aggregateWindow.max();
-            int idleCount = pool.trimmablePool.getIdle();
-            int floor = minPoolSize.applyAsInt(pool.trimmablePool);
-            int toFreeCount = idleCount / 2;
-            if (toFreeCount > peakInUse && toFreeCount > floor) {
-                pool.trimmablePool.trim(idleCount - toFreeCount);
+            int idleCount = p.getIdle();
+            int floor = minPoolSize.applyAsInt(p);
+            int keep = idleCount / 2;
+            if (keep > peakInUse && keep > floor) {
+                // trim() reports back whether the pool was actually shrunk.
+                if (p.trim(idleCount - keep)) {
+                    log.info("Trimmed pool '{}': idle {} -> {} (freed {}, peak {}, floor {})",
+                            p.getName(), idleCount, p.getIdle(), idleCount - keep, peakInUse, floor);
+                }
             }
         });
     }
