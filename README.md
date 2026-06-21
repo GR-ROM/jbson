@@ -1,12 +1,5 @@
 # JBson
 
-> [!WARNING]
-> **DEPRECATED / RETIRED (2026-06-21).** This hand-maintained Android/Java-21 fork is no longer used.
-> It has been replaced by the **`jbson-jdk21`** artifact built from the single source of truth — the main
-> [`GR-ROM/jbson`](https://github.com/GR-ROM/jbson) repo (`-Pjdk21` variant: Java 21 bytecode, no FFM,
-> `allocateDirect` buffers, the current FastPool/PoolOptimizer). Depend on **`su.grinev:jbson-jdk21`**
-> instead of building from this fork. The mobile client (`my-vpn-client`) has already migrated.
-
 A high-performance, zero-dependency binary serialization library for Java. Supports **BSON**, **MessagePack**, and **JSON** formats with annotation-based POJO binding, pool-backed buffer management, and VarHandle-optimized field access.
 
 [![Java](https://img.shields.io/badge/java-21-blue?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
