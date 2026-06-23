@@ -120,11 +120,11 @@ public class PoolOptimizerTest {
     }
 
     @Test
-    void optimize_usesP995_ignoringIsolatedSpikes() {
+    void optimize_usesMax_holdsPeakAgainstIsolatedSpikes() {
         FakeTrimmable t = new FakeTrimmable(0, 160); // 160 idle
         PoolOptimizer opt = optimizerFor(t);
-        // 199 low-demand samples (in-use 5) and one spike (150): p99.5 == 5, but max() would be 150.
-        // (A lone spike is the top 0.5% of 200 samples, so the 99.5th percentile excludes it.)
+        // 199 low-demand samples (in-use 5) and one spike (150): max() == 150, so the pool is
+        // held at the peak — even a lone burst keeps it sized until that peak ages out of the window.
         t.inUse = 5;
         for (int i = 0; i < 199; i++) {
             opt.fillAggregateWindow();
@@ -134,9 +134,9 @@ public class PoolOptimizerTest {
 
         opt.optimize();
 
-        // keep = 160 - 16 = 144 > p99.5(5) -> trims. (Against max(150) the lone spike would have blocked it.)
-        assertEquals(List.of(16), t.trimCalls, "trims against the 99.5th percentile, ignoring the lone spike");
-        assertEquals(144, t.idle);
+        // toFree = 160/10 = 16; keep = 144, but 144 < max(150) -> does NOT trim (peak held).
+        assertEquals(List.of(), t.trimCalls, "max() keeps the pool sized for the worst burst, ignoring nothing");
+        assertEquals(160, t.idle);
     }
 
     @Test
