@@ -119,6 +119,11 @@ public class AggregateWindow {
         return percentile(99.0);
     }
 
+    /** 99.5th percentile of stored values, or 0 if the window is empty. */
+    public int p995() {
+        return percentile(99.5);
+    }
+
     /**
      * The given percentile of the stored values using the nearest-rank method,
      * or 0 if the window is empty.

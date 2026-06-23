@@ -20,7 +20,13 @@ public class DisposablePool<T extends Disposable> extends FastPool<T> {
     @Override
     public T get() {
         T t = super.get();
-        t.setOnDispose(() -> release(t));
+        // Set the release closure once per buffer, not per checkout: dispose() runs onDispose but never
+        // clears it, and the buffer always returns to this same pool, so the captured lambda stays valid
+        // for the buffer's whole pool lifetime. Re-creating it every get() was a measurable per-packet
+        // allocation on the hot path (JFR run3: DisposablePool$$Lambda, ~8% of sampled allocations).
+        if (t.getOnDispose() == null) {
+            t.setOnDispose(() -> release(t));
+        }
         return t;
     }
 }

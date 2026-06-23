@@ -144,6 +144,11 @@ public class ArenaByteBuffer implements Disposable {
     }
 
     @Override
+    public Runnable getOnDispose() {
+        return onDispose;
+    }
+
+    @Override
     public void dispose() {
         if (onDispose != null) {
             onDispose.run();

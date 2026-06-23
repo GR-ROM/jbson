@@ -222,6 +222,7 @@ public class AggregateWindowTest {
      *  median (p50): rank 50  -> value 50
      *  p95:          rank 95  -> value 95
      *  p99:          rank 99  -> value 99
+     *  p99.5:        rank 100 -> value 100 (ceil(0.995*100))
      */
     @Test
     void percentiles_over1To100() {
@@ -232,6 +233,7 @@ public class AggregateWindowTest {
         assertEquals(50, window.median());
         assertEquals(95, window.p95());
         assertEquals(99, window.p99());
+        assertEquals(100, window.p995());
     }
 
     @Test

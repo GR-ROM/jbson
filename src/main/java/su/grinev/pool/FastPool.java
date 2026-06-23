@@ -1,7 +1,13 @@
 package su.grinev.pool;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +41,13 @@ public class FastPool<T> implements Trimmable {
     private final AtomicInteger isUse = new AtomicInteger(0);
     private final AtomicLong totalCreated = new AtomicLong(0);
 
+    // Debug: per-buffer checkout tracking to localize double-release / double-handout (buffer-ownership bugs).
+    // Enabled with -Dfastpool.track=true (off by default — the identity-set ops add per-get/release lock overhead).
+    private static final Logger log = LoggerFactory.getLogger(FastPool.class);
+    private static final boolean TRACK = Boolean.getBoolean("fastpool.track");
+    private final Set<T> checkedOut =
+            TRACK ? Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>())) : null;
+
     public FastPool(String name, Supplier<T> supplier, Consumer<T> destroyer,
                     int initialSize, int maxSize, boolean blocking, int timeoutMs) {
         this.name = name;
@@ -67,11 +80,17 @@ public class FastPool<T> implements Trimmable {
         }
         isUse.incrementAndGet();
         T item = pool.poll();
-        if (item != null) {
-            return item;
+        if (item == null) {
+            totalCreated.incrementAndGet();
+            item = supplier.get();
         }
-        totalCreated.incrementAndGet();
-        return supplier.get();
+        if (checkedOut != null && !checkedOut.add(item)) {
+            // Same buffer handed out while already checked out -> it sat in the queue twice,
+            // i.e. it was double-released earlier. This is the corruption: two owners, one buffer.
+            log.error("FastPool '{}' DOUBLE-HANDOUT: buffer id={} given out while still checked out. get site:",
+                    name, System.identityHashCode(item), new Throwable("get"));
+        }
+        return item;
     }
 
     private void acquirePermit() {
@@ -93,6 +112,12 @@ public class FastPool<T> implements Trimmable {
     }
 
     public void release(T item) {
+        if (checkedOut != null && !checkedOut.remove(item)) {
+            // Releasing a buffer that is NOT currently checked out -> it was already released
+            // (double-release / double-dispose). This stack is the second, offending release site.
+            log.error("FastPool '{}' DOUBLE-RELEASE: buffer id={} released but not checked out. release site:",
+                    name, System.identityHashCode(item), new Throwable("release"));
+        }
         if (isUse.decrementAndGet() < 0) {
             // More releases than gets — a double release (or releasing a non-borrowed object).
             isUse.incrementAndGet();

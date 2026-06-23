@@ -108,6 +108,11 @@ public class DynamicByteBuffer extends ArenaByteBuffer implements Disposable {
     }
 
     @Override
+    public Runnable getOnDispose() {
+        return onDispose;
+    }
+
+    @Override
     public void dispose() {
         this.onDispose.run();
     }
