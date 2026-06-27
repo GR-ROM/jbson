@@ -14,9 +14,10 @@ import java.util.function.ToIntFunction;
 /**
  * Periodically samples each monitored pool's in-use count into a rolling
  * {@link AggregateWindow} of {@code windowSeconds} samples (one per second) and,
- * every {@code idlePeriodSeconds}, frees a 1/10 slice of any pool whose retained
- * 9/10 would still exceed both the peak (max) demand seen anywhere in the window
- * and the per-pool floor — releasing the excess (and, for arena-backed pools,
+ * every {@code idlePeriodSeconds}, frees a ~1/50 slice (at least one) of any pool
+ * whose retained remainder would still exceed both the peak (max) demand seen
+ * anywhere in the window and the per-pool floor — releasing the excess gradually
+ * (and, for arena-backed pools,
  * native memory) only once demand drops. The peak is taken at full strength (no
  * outlier trimming): a pool is held at its highest observed in-use count until
  * that peak ages out of the window, so with the default 1-hour window a pool
@@ -83,7 +84,7 @@ public class PoolOptimizer {
             int peakInUse = pool.aggregateWindow.max();   // full peak demand over the window — keep enough for the worst burst, no outlier trimming
             int idleCount = p.getIdle();
             int floor = minPoolSize.applyAsInt(p);
-            int toFree = idleCount / 10;     // gradual: free 1/10 of idle per tick
+            int toFree = Math.max(idleCount / 50, 1);     // gentle: free ~1/50 of idle per tick (floor 1 so small pools still drain)
             int keep = idleCount - toFree;
             if (toFree > 0 && keep > peakInUse && keep > floor) {
                 // trim() reports back whether the pool was actually shrunk.

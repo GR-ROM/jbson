@@ -44,12 +44,12 @@ public class PoolOptimizerIntegrationTest {
         assertEquals(160, pool.getCurrentPoolSize());
 
         opt.fillAggregateWindow(); // peak demand sampled at 0 (pool idle)
-        opt.optimize();            // toFree = 160/10 = 16 -> trim 16, closing 16 arenas
+        opt.optimize();            // toFree = max(160/50, 1) = 3 -> trim 3, closing 3 arenas
 
-        assertEquals(144, pool.getIdle(), "1/10 of idle freed");
-        assertEquals(144, pool.getCurrentPoolSize(), "owned dropped by the 16 freed buffers");
-        assertEquals(144, all.stream().filter(ArenaByteBuffer::isAlive).count(), "144 buffers remain pooled");
-        assertEquals(16, all.stream().filter(b -> !b.isAlive()).count(), "16 buffers had their native arena closed");
+        assertEquals(157, pool.getIdle(), "~1/50 of idle freed");
+        assertEquals(157, pool.getCurrentPoolSize(), "owned dropped by the 3 freed buffers");
+        assertEquals(157, all.stream().filter(ArenaByteBuffer::isAlive).count(), "157 buffers remain pooled");
+        assertEquals(3, all.stream().filter(b -> !b.isAlive()).count(), "3 buffers had their native arena closed");
     }
 
     /**
