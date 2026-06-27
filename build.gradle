@@ -23,7 +23,7 @@ group = "su.grinev"
 
 // jbson-jdk21 variant (toggle with -Pjdk21): swaps in the Java 21 ArenaByteBuffer (allocateDirect,
 // auto-only), compiles main at release 21, and publishes as artifactId "jbson-jdk21". The Java 25 build
-// owns the build counter; the jdk21 build reuses the current number so both stay lockstep at 0.8.0.<N>.
+// owns the build counter; the jdk21 build reuses the current number so both stay lockstep at 0.8.1.<N>.
 def jdk21 = project.hasProperty('jdk21')
 def artifactName = jdk21 ? 'jbson-jdk21' : 'jbson'
 
@@ -34,8 +34,8 @@ if (!jdk21 && gradle.startParameter.taskNames.any { it.toLowerCase().contains('p
     jbsonBuildNumber = ((jbsonBuildNumber.isInteger() ? jbsonBuildNumber.toInteger() : 0) + 1).toString()
     jbsonBuildFile.text = jbsonBuildNumber
 }
-// Real releases come from a vX.Y.Z tag via -PreleaseVersion (CI); dev/local builds are 0.8.0.<build>.
-version = project.findProperty('releaseVersion') ?: ("0.8.0." + jbsonBuildNumber)
+// Real releases come from a vX.Y.Z tag via -PreleaseVersion (CI); dev/local builds are 0.8.1.<build>.
+version = project.findProperty('releaseVersion') ?: ("0.8.1." + jbsonBuildNumber)
 logger.lifecycle("jbson ${artifactName} ${version}")
 
 if (jdk21) {

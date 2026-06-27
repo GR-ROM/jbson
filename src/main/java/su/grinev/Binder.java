@@ -60,6 +60,7 @@ public class Binder {
 
     private static final Map<Class<?>, ClassSchema> schemaCache = new ConcurrentHashMap<>();
     private static final Map<Class<?>, MethodHandle> ctorCache = new ConcurrentHashMap<>();
+    private static final Map<Class<?>, MethodHandle> recordCtorCache = new ConcurrentHashMap<>();
     private static final Map<String, Class<?>> classNameRegistry = new ConcurrentHashMap<>();
     private static final Set<String> knownPackages = ConcurrentHashMap.newKeySet();
     private static final Class<?> AMBIGUOUS = Binder.class;
@@ -95,10 +96,18 @@ public class Binder {
 
     @SuppressWarnings("unchecked")
     public <T> T bind(Class<T> tClass, BinaryDocument document) {
+        if (tClass.isRecord()) {
+            return (T) bindRecord(tClass, (Map<Integer, Object>) (Map<?, ?>) document.getDocumentMap());
+        }
         Object rootObject = instantiate(tClass);
         ArrayDeque<BinderContext> stack = new ArrayDeque<>();
         stack.addLast(new BinderContext(rootObject, document.getDocumentMap(), tClass));
+        runBindLoop(stack);
+        return (T) rootObject;
+    }
 
+    @SuppressWarnings("unchecked")
+    private void runBindLoop(ArrayDeque<BinderContext> stack) {
         while (!stack.isEmpty()) {
             BinderContext ctx = stack.removeLast();
 
@@ -110,13 +119,19 @@ public class Binder {
             if (ctx.o instanceof Collection<?> collection && ctx.document instanceof List<?> listData) {
                 java.lang.reflect.Type itemType = resolveListItemType(ctx.type);
                 for (Object rawItem : listData) {
-                    if (isPrimitiveOrWrapperOrString(rawItem.getClass())) {
+                    if (rawItem == null) {
+                        ((Collection<Object>) collection).add(null);
+                    } else if (isPrimitiveOrWrapperOrString(rawItem.getClass())) {
                         ((Collection<Object>) collection).add(rawItem);
                     } else if (rawItem instanceof Map<?, ?> mapItem) {
                         Class<?> itemClass = resolveClassFromType(itemType);
-                        Object itemObj = instantiate(itemClass);
-                        ((Collection<Object>) collection).add(itemObj);
-                        stack.addLast(new BinderContext(itemObj, mapItem, itemClass));
+                        if (itemClass.isRecord()) {
+                            ((Collection<Object>) collection).add(bindRecord(itemClass, (Map<Integer, Object>) mapItem));
+                        } else {
+                            Object itemObj = instantiate(itemClass);
+                            ((Collection<Object>) collection).add(itemObj);
+                            stack.addLast(new BinderContext(itemObj, mapItem, itemClass));
+                        }
                     }
                 }
                 continue;
@@ -154,15 +169,23 @@ public class Binder {
                         case TYPE -> {
                             String className = (String) documentMap.get(binding.discriminator);
                             Class<?> targetCls = resolveClass(className);
-                            Object newObject = instantiate(targetCls);
-                            binding.handle.set(ctx.o, newObject);
-                            stack.addLast(new BinderContext(newObject, value, targetCls));
+                            if (targetCls.isRecord()) {
+                                binding.handle.set(ctx.o, bindRecord(targetCls, (Map<Integer, Object>) value));
+                            } else {
+                                Object newObject = instantiate(targetCls);
+                                binding.handle.set(ctx.o, newObject);
+                                stack.addLast(new BinderContext(newObject, value, targetCls));
+                            }
                         }
                         case NESTED -> {
                             Class<?> targetCls = binding.fieldType;
-                            Object newObject = instantiate(targetCls);
-                            binding.handle.set(ctx.o, newObject);
-                            stack.addLast(new BinderContext(newObject, value, targetCls));
+                            if (targetCls.isRecord()) {
+                                binding.handle.set(ctx.o, bindRecord(targetCls, (Map<Integer, Object>) value));
+                            } else {
+                                Object newObject = instantiate(targetCls);
+                                binding.handle.set(ctx.o, newObject);
+                                stack.addLast(new BinderContext(newObject, value, targetCls));
+                            }
                         }
                     }
                 } catch (Exception e) {
@@ -170,8 +193,123 @@ public class Binder {
                 }
             }
         }
+    }
 
-        return (T) rootObject;
+    // ---- Record support (immutable types: built via the canonical constructor, not setters) ----
+
+    @SuppressWarnings("unchecked")
+    private Object bindRecord(Class<?> recordClass, Map<Integer, Object> doc) {
+        java.lang.reflect.RecordComponent[] comps = recordClass.getRecordComponents();
+        Object[] args = new Object[comps.length];
+        for (int i = 0; i < comps.length; i++) {
+            java.lang.reflect.RecordComponent rc = comps[i];
+            int tag = tagForComponent(recordClass, rc);
+            Object docVal = doc == null ? null : doc.get(tag);
+            args[i] = bindComponentValue(rc.getType(), rc.getGenericType(), docVal);
+        }
+        try {
+            MethodHandle ctor = recordCtorCache.computeIfAbsent(recordClass, Binder::canonicalConstructor);
+            return ctor.invokeWithArguments(args);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to construct record " + recordClass.getName(), e);
+        }
+    }
+
+    private static MethodHandle canonicalConstructor(Class<?> recordClass) {
+        java.lang.reflect.RecordComponent[] comps = recordClass.getRecordComponents();
+        Class<?>[] paramTypes = new Class<?>[comps.length];
+        for (int i = 0; i < comps.length; i++) {
+            paramTypes[i] = comps[i].getType();
+        }
+        try {
+            MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(recordClass, MethodHandles.lookup());
+            return lookup.findConstructor(recordClass, MethodType.methodType(void.class, paramTypes));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static int tagForComponent(Class<?> recordClass, java.lang.reflect.RecordComponent rc) {
+        Tag tag = rc.getAnnotation(Tag.class);
+        if (tag == null) {
+            try {
+                tag = recordClass.getDeclaredField(rc.getName()).getAnnotation(Tag.class);
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        if (tag == null) {
+            throw new IllegalArgumentException("Record component '" + rc.getName() + "' in '"
+                    + recordClass.getName() + "' must be annotated with @Tag");
+        }
+        if (tag.value() < 0) {
+            throw new IllegalArgumentException("Tag value for record component '" + rc.getName() + "' in '"
+                    + recordClass.getName() + "' must be non-negative, got " + tag.value());
+        }
+        return tag.value();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object bindComponentValue(Class<?> type, java.lang.reflect.Type genericType, Object docVal) {
+        if (docVal == null) {
+            return type.isPrimitive() ? defaultPrimitive(type) : null;
+        }
+        if (isPrimitiveOrWrapperOrString(type)) {
+            return coerceNumeric(type, docVal);
+        }
+        if (type.isEnum()) {
+            return Enum.valueOf((Class<Enum>) type, docVal.toString());
+        }
+        if (type.isRecord()) {
+            return bindRecord(type, (Map<Integer, Object>) docVal);
+        }
+        if (Collection.class.isAssignableFrom(type)) {
+            Collection<Object> col = instantiateCollection(type);
+            java.lang.reflect.Type itemType = resolveListItemType(genericType);
+            Class<?> itemClass = resolveClassFromType(itemType);
+            for (Object raw : (List<?>) docVal) {
+                if (raw == null) {
+                    col.add(null);
+                } else if (isPrimitiveOrWrapperOrString(itemClass)) {
+                    col.add(coerceNumeric(itemClass, raw));
+                } else if (raw instanceof Map<?, ?> m) {
+                    col.add(itemClass.isRecord()
+                            ? bindRecord(itemClass, (Map<Integer, Object>) m)
+                            : bindClassValue(itemClass, (Map<Integer, Object>) m));
+                } else {
+                    col.add(raw);
+                }
+            }
+            return col;
+        }
+        if (Map.class.isAssignableFrom(type)) {
+            Map<Object, Object> m = new HashMap<>();
+            m.putAll((Map<Object, Object>) docVal);
+            return m;
+        }
+        // nested non-record class
+        return bindClassValue(type, (Map<Integer, Object>) docVal);
+    }
+
+    private Object bindClassValue(Class<?> clazz, Map<Integer, Object> doc) {
+        Object o = instantiate(clazz);
+        ArrayDeque<BinderContext> stack = new ArrayDeque<>();
+        stack.addLast(new BinderContext(o, doc, clazz));
+        runBindLoop(stack);
+        return o;
+    }
+
+    private static Object defaultPrimitive(Class<?> type) {
+        if (type == boolean.class) return false;
+        if (type == char.class) return '\0';
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0f;
+        if (type == double.class) return 0d;
+        return null;
     }
 
     public BinaryDocument unbind(Object o) {
