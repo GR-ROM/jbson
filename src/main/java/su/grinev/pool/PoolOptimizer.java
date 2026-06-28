@@ -35,7 +35,7 @@ public class PoolOptimizer {
 
     /** Uniform floor, default 1-hour window. */
     public PoolOptimizer(Collection<Trimmable> pools, int idlePeriodSeconds, int minPoolSize) {
-        this(pools, DEFAULT_WINDOW_SEC, idlePeriodSeconds, p -> minPoolSize, true);
+        this(pools, DEFAULT_WINDOW_SEC, idlePeriodSeconds, pool -> minPoolSize, true);
     }
 
     /** Per-pool floor, default 1-hour window. */
@@ -72,7 +72,7 @@ public class PoolOptimizer {
     }
 
     void fillAggregateWindow() {
-        pools.forEach(pool -> pool.aggregateWindow.put(pool.trimmablePool.getCount()));
+        pools.forEach(pool -> pool.aggregateWindow.put(pool.trimmablePool.getCountInUse()));
     }
 
     void optimize() {
@@ -83,14 +83,20 @@ public class PoolOptimizer {
             }
             int peakInUse = pool.aggregateWindow.max();   // full peak demand over the window — keep enough for the worst burst, no outlier trimming
             int idleCount = p.getIdle();
-            int floor = minPoolSize.applyAsInt(p);
-            int toFree = Math.max(idleCount / 50, 1);     // gentle: free ~1/50 of idle per tick (floor 1 so small pools still drain)
-            int keep = idleCount - toFree;
-            if (toFree > 0 && keep > peakInUse && keep > floor) {
-                // trim() reports back whether the pool was actually shrunk.
-                if (p.trim(toFree)) {
-                    log.info("Trimmed pool '{}': idle {} -> {} (freed {}, peak {}, floor {})",
-                            p.getName(), idleCount, p.getIdle(), toFree, peakInUse, floor);
+            int owned = p.getCountInUse() + idleCount;          // total objects owned by the pool: in use + idle
+            // Only reclaim above the pool's own baseline (initial/min size): never trim the
+            // pre-allocated floor away during idle, but do release genuine excess grown by a burst.
+            if (idleCount > 0) {
+                int floor = minPoolSize.applyAsInt(p);
+                int toFree = Math.max(idleCount / 50, 1);  // gentle: free ~1/50 of idle per tick (floor 1 so small pools still drain)
+                toFree = Math.min(toFree, owned - p.getMinSize());   // clamp so owned never drops below the baseline in one tick
+                int keep = idleCount - toFree;
+                if (toFree > 0 && keep > peakInUse && keep > floor) {
+                    // trim() reports back whether the pool was actually shrunk.
+                    if (p.trim(toFree)) {
+                        log.info("Trimmed pool '{}': idle {} -> {} (freed {}, peak {}, floor {}, minSize {})",
+                                p.getName(), idleCount, p.getIdle(), toFree, peakInUse, floor, p.getMinSize());
+                    }
                 }
             }
         });

@@ -6,7 +6,6 @@ import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -147,7 +146,7 @@ public class FastPoolChaosTest {
 
         assertNull(failure.get(), () -> "chaos invariant violated: " + failure.get());
         assertEquals(0, concurrentlyBorrowed.get(), "every borrow was balanced by a release");
-        assertEquals(0, pool.getCount(), "in-use count returns to zero, never drifts");
+        assertEquals(0, pool.getCountInUse(), "in-use count returns to zero, never drifts");
         if (blocking) {
             assertTrue(maxConcurrent.get() <= limit,
                     "blocking pool exceeded its limit: peak " + maxConcurrent.get() + " > " + limit);

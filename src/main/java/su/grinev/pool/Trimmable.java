@@ -2,8 +2,9 @@ package su.grinev.pool;
 
 public interface Trimmable {
     String getName();
-    int getCount();
+    int getCountInUse();
     int getIdle();
+    int getMinSize();
     boolean trim(int size);
     boolean isTrimmable();
 }

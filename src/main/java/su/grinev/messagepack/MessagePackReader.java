@@ -55,6 +55,12 @@ public class MessagePackReader implements Deserializer {
     }
 
     public void deserialize(ByteBuffer buffer, BinaryDocument binaryDocument) {
+        // The length header counts bytes from the frame's start (see MessagePackWriter), and a frame
+        // is read in-place from the buffer's CURRENT position — not absolute index 0 (callers no longer
+        // slice() per frame, so several frames can share one buffer at non-zero offsets). Capture the
+        // start so the over-read check below measures bytes consumed for THIS frame; comparing against
+        // the absolute position would falsely warn for every non-first frame.
+        final int startPosition = buffer.position();
         int length = -1;
         if (readLengthHeader) {
             length = buffer.getInt();
@@ -110,7 +116,7 @@ public class MessagePackReader implements Deserializer {
             stackPool.release(stack);
         }
 
-        if (length > -1 && length < buffer.position()) {
+        if (length > -1 && length < buffer.position() - startPosition) {
             log.warn("Buffer is too small");
         }
     }

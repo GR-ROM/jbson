@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * so the schedulers never fire, and {@code fillAggregateWindow()} / {@code optimize()}
  * are driven manually for deterministic assertions.
  *
- * Model: each second the in-use count ({@link Trimmable#getCount()}) is sampled
+ * Model: each second the in-use count ({@link Trimmable#getCountInUse()}) is sampled
  * into a rolling window; on the idle tick, if the pool holds more idle objects
  * ({@link Trimmable#getIdle()}) than the peak demand, the excess idle objects are
  * trimmed down to {@code max(peakInUse, minPoolSize)}.
@@ -23,12 +23,18 @@ public class PoolOptimizerTest {
     static final class FakeTrimmable implements Trimmable {
         int inUse;
         int idle;
+        int minSize;
         boolean trimmable = true;
         final List<Integer> trimCalls = new ArrayList<>();
 
         FakeTrimmable(int inUse, int idle) {
+            this(inUse, idle, 0);
+        }
+
+        FakeTrimmable(int inUse, int idle, int minSize) {
             this.inUse = inUse;
             this.idle = idle;
+            this.minSize = minSize;
         }
 
         @Override
@@ -37,13 +43,18 @@ public class PoolOptimizerTest {
         }
 
         @Override
-        public int getCount() {
+        public int getCountInUse() {
             return inUse;
         }
 
         @Override
         public int getIdle() {
             return idle;
+        }
+
+        @Override
+        public int getMinSize() {
+            return minSize;
         }
 
         @Override
@@ -255,6 +266,89 @@ public class PoolOptimizerTest {
 
         assertEquals(List.of(3), t.trimCalls);
         assertEquals(157, t.idle);
+    }
+
+    // ---------------------------------------------------------------------
+    // minSize floor — never trim a pool below its own initial/baseline size
+    // ---------------------------------------------------------------------
+
+    @Test
+    void optimize_doesNotTrim_whenOwnedAtMinSize() {
+        FakeTrimmable t = new FakeTrimmable(0, 100, 100); // owned 100 == minSize
+        PoolOptimizer opt = optimizerFor(t);
+        opt.fillAggregateWindow();
+
+        opt.optimize();
+
+        assertTrue(t.trimCalls.isEmpty(), "a pool at its baseline size is never trimmed");
+        assertEquals(100, t.idle);
+    }
+
+    @Test
+    void optimize_doesNotTrim_whenOwnedBelowMinSize() {
+        FakeTrimmable t = new FakeTrimmable(0, 40, 100); // owned 40 < minSize (e.g. still warming up)
+        PoolOptimizer opt = optimizerFor(t);
+        opt.fillAggregateWindow();
+
+        opt.optimize();
+
+        assertTrue(t.trimCalls.isEmpty());
+    }
+
+    @Test
+    void optimize_trimsFullyIdlePool_downTowardMinSize() {
+        // Regression: a fully idle pool (in-use 0) with excess above its baseline must still be
+        // reclaimed — an in-use-only guard would wrongly never trim it.
+        FakeTrimmable t = new FakeTrimmable(0, 200, 100); // owned 200 > minSize 100
+        PoolOptimizer opt = optimizerFor(t);
+        opt.fillAggregateWindow();          // peak 0
+
+        opt.optimize();
+
+        // toFree = min(max(200/50,1), owned-minSize=100) = 4; keep 196 > peak 0 and floor 0
+        assertEquals(List.of(4), t.trimCalls);
+        assertEquals(196, t.idle);
+    }
+
+    @Test
+    void optimize_clampsToFree_soOwnedNeverDropsBelowMinSize() {
+        FakeTrimmable t = new FakeTrimmable(0, 100, 99); // owned 100, only 1 above minSize
+        PoolOptimizer opt = optimizerFor(t);
+        opt.fillAggregateWindow();
+
+        opt.optimize();
+
+        // raw toFree = max(100/50,1)=2, clamped to owned-minSize=1 so owned can't dip below 99
+        assertEquals(List.of(1), t.trimCalls, "toFree is clamped to the room above minSize");
+        assertEquals(99, t.idle);
+    }
+
+    @Test
+    void optimize_convergesToMinSize_thenStops() {
+        FakeTrimmable t = new FakeTrimmable(0, 102, 100);
+        PoolOptimizer opt = optimizerFor(t);
+        opt.fillAggregateWindow();
+
+        opt.optimize(); // owned 102 -> free min(2,2)=2 -> owned 100
+        opt.optimize(); // owned 100 == minSize -> no trim
+
+        assertEquals(List.of(2), t.trimCalls);
+        assertEquals(100, t.idle);
+    }
+
+    @Test
+    void optimize_ownedCountsInUseTowardBaseline() {
+        // owned = in-use + idle; the baseline guard counts both, so a pool whose idle alone is below
+        // minSize can still be trimmed when in-use pushes owned above it.
+        FakeTrimmable t = new FakeTrimmable(60, 70, 100); // idle 70 < minSize, but owned 130 > minSize
+        PoolOptimizer opt = optimizerFor(t);
+        opt.fillAggregateWindow();          // peak = in-use 60
+
+        opt.optimize();
+
+        // toFree = min(max(70/50,1)=1, owned-minSize=30)=1; keep 69 > peak 60 and floor 0
+        assertEquals(List.of(1), t.trimCalls);
+        assertEquals(69, t.idle);
     }
 
     // ---------------------------------------------------------------------

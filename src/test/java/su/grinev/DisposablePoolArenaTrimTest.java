@@ -61,16 +61,16 @@ public class DisposablePoolArenaTrimTest {
 
         ArenaByteBuffer a = pool.get();
         ArenaByteBuffer b = pool.get();
-        assertEquals(2, pool.getCount(), "two objects in use");
+        assertEquals(2, pool.getCountInUse(), "two objects in use");
         assertEquals(2, pool.getInFlight());
         assertEquals(0, pool.getIdle(), "none idle in the pool yet");
 
         pool.release(a);
-        assertEquals(1, pool.getCount(), "one still in use");
+        assertEquals(1, pool.getCountInUse(), "one still in use");
         assertEquals(1, pool.getIdle(), "released object is now idle");
 
         pool.release(b);
-        assertEquals(0, pool.getCount());
+        assertEquals(0, pool.getCountInUse());
         assertEquals(2, pool.getIdle());
     }
 

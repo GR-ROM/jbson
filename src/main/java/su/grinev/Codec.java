@@ -56,12 +56,24 @@ public class Codec {
     }
 
     public static Codec messagePack(PoolFactory poolFactory, int documentSize, Binder.ClassNameMode classNameMode) {
+        return messagePack(poolFactory, documentSize, classNameMode, -1);
+    }
+
+    /**
+     * @param maxCollectionSize hard cap on any decoded array/map element count; the reader rejects
+     *                          larger collections (MessagePackException) before allocating. Pass a
+     *                          value &lt;= 0 to use the reader default. Tighten it to the largest
+     *                          collection your protocol legitimately uses to bound decode allocation.
+     */
+    public static Codec messagePack(PoolFactory poolFactory, int documentSize, Binder.ClassNameMode classNameMode, int maxCollectionSize) {
         FastPool<WriterContext> writerContextPool = poolFactory.getPool("msgpack-writer-context-pool", WriterContext::new);
         FastPool<ReaderContext> readerContextPool = poolFactory.getPool("msgpack-reader-context-pool", ReaderContext::new);
         FastPool<ArrayDeque<ReaderContext>> readerStackPool = poolFactory.getPool("msgpack-reader-stack-pool", () -> new ArrayDeque<>(64));
         FastPool<ArrayDeque<WriterContext>> writerStackPool = poolFactory.getPool("msgpack-writer-stack-pool", () -> new ArrayDeque<>(64));
         MessagePackWriter writer = new MessagePackWriter(writerContextPool, writerStackPool);
-        MessagePackReader reader = new MessagePackReader(readerContextPool, readerStackPool, true, true);
+        MessagePackReader reader = maxCollectionSize > 0
+                ? new MessagePackReader(readerContextPool, readerStackPool, true, true, maxCollectionSize)
+                : new MessagePackReader(readerContextPool, readerStackPool, true, true);
         DisposablePool<DynamicByteBuffer> pool = poolFactory.getDisposablePool("codec-buffer-pool", () -> new DynamicByteBuffer(documentSize, true));
         return new Codec(writer, reader, pool, classNameMode);
     }

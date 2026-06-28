@@ -24,34 +24,34 @@ public class FastPoolTest {
         Object a = pool.get();
         Object b = pool.get();
         Object c = pool.get(); // beyond initial size: non-blocking -> creates on demand, never blocks
-        assertEquals(3, pool.getCount());
+        assertEquals(3, pool.getCountInUse());
         pool.release(a);
         pool.release(b);
         pool.release(c);
-        assertEquals(0, pool.getCount());
+        assertEquals(0, pool.getCountInUse());
     }
 
     /** Regression: getCount() (in-use) must stay correct across reuse and never go negative. */
     @Test
-    void getCount_tracksInUseAcrossReuse() {
+    void getCount_InUse_tracksInUseAcrossReuse() {
         FastPool<Object> pool = pool(0, 10, new ArrayList<>());
 
         Object a = pool.get();
         Object b = pool.get();
-        assertEquals(2, pool.getCount(), "two checked out");
+        assertEquals(2, pool.getCountInUse(), "two checked out");
         assertEquals(0, pool.getIdle());
 
         pool.release(a);
-        assertEquals(1, pool.getCount());
+        assertEquals(1, pool.getCountInUse());
         assertEquals(1, pool.getIdle(), "released object is now idle");
 
         Object c = pool.get(); // reuses the idle object — in-use must rise again
-        assertEquals(2, pool.getCount(), "reusing a pooled object still counts as in use");
+        assertEquals(2, pool.getCountInUse(), "reusing a pooled object still counts as in use");
         assertEquals(0, pool.getIdle());
 
         pool.release(b);
         pool.release(c);
-        assertEquals(0, pool.getCount(), "in-use returns to 0, never negative");
+        assertEquals(0, pool.getCountInUse(), "in-use returns to 0, never negative");
         assertEquals(2, pool.getIdle());
     }
 
@@ -65,22 +65,22 @@ public class FastPoolTest {
         assertThrows(IllegalStateException.class, () -> pool.release(o),
                 "a double release must be rejected");
         // the pool is left consistent: in-use back at 0, not negative
-        assertEquals(0, pool.getCount());
+        assertEquals(0, pool.getCountInUse());
     }
 
     @Test
     void prefilledObjects_startIdleNotInUse() {
         FastPool<Object> pool = pool(3, 10, new ArrayList<>());
 
-        assertEquals(0, pool.getCount(), "prefilled objects are idle, not in use");
+        assertEquals(0, pool.getCountInUse(), "prefilled objects are idle, not in use");
         assertEquals(3, pool.getIdle());
 
         Object x = pool.get();
-        assertEquals(1, pool.getCount());
+        assertEquals(1, pool.getCountInUse());
         assertEquals(2, pool.getIdle());
 
         pool.release(x);
-        assertEquals(0, pool.getCount());
+        assertEquals(0, pool.getCountInUse());
         assertEquals(3, pool.getIdle());
     }
 

@@ -1,13 +1,10 @@
 package su.grinev.pool;
 
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +31,8 @@ public class FastPool<T> implements Trimmable {
     private final ArrayBlockingQueue<T> pool;
     private final Supplier<T> supplier;
     private final Consumer<T> destroyer;
+    @Getter
+    private final int minSize;
     private final int maxSize;
     private final boolean blocking;
     private final int timeoutMs;
@@ -45,8 +44,7 @@ public class FastPool<T> implements Trimmable {
     // Enabled with -Dfastpool.track=true (off by default — the identity-set ops add per-get/release lock overhead).
     private static final Logger log = LoggerFactory.getLogger(FastPool.class);
     private static final boolean TRACK = Boolean.getBoolean("fastpool.track");
-    private final Set<T> checkedOut =
-            TRACK ? Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>())) : null;
+    private final Set<T> checkedOut = TRACK ? Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>())) : null;
 
     public FastPool(String name, Supplier<T> supplier, Consumer<T> destroyer,
                     int initialSize, int maxSize, boolean blocking, int timeoutMs) {
@@ -58,6 +56,7 @@ public class FastPool<T> implements Trimmable {
         this.blocking = blocking;
         this.timeoutMs = timeoutMs;
         this.permits = blocking ? new Semaphore(maxSize) : null;
+        this.minSize = initialSize;
 
         for (int i = 0; i < initialSize; i++) {
             pool.offer(supplier.get());
@@ -138,7 +137,7 @@ public class FastPool<T> implements Trimmable {
 
     /** Objects currently in use (checked out) — the demand signal sampled by the optimizer. */
     @Override
-    public int getCount() {
+    public int getCountInUse() {
         return isUse.get();
     }
 

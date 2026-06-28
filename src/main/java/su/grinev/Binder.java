@@ -3,6 +3,10 @@ package su.grinev;
 import annotation.Type;
 import annotation.Tag;
 import annotation.Transient;
+import annotation.Size;
+import annotation.Range;
+import annotation.Pattern;
+import su.grinev.exception.ValidationException;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -37,14 +41,33 @@ public class Binder {
         final Class<?> fieldType;
         final java.lang.reflect.Type genericType;
         final int discriminator; // -1 if not BSON_TYPE
+        final Constraints constraints; // field validation bounds; null if none declared
 
-        FieldBinding(int tag, VarHandle handle, FieldKind kind, Class<?> fieldType, java.lang.reflect.Type genericType, int discriminator) {
+        FieldBinding(int tag, VarHandle handle, FieldKind kind, Class<?> fieldType, java.lang.reflect.Type genericType, int discriminator, Constraints constraints) {
             this.tag = tag;
             this.handle = handle;
             this.kind = kind;
             this.fieldType = fieldType;
             this.genericType = genericType;
             this.discriminator = discriminator;
+            this.constraints = constraints;
+        }
+    }
+
+    /** Validation bounds for a field, enforced during binding. */
+    static final class Constraints {
+        final int minSize;                       // @Size: min length/size/byte-length
+        final int maxSize;                       // @Size: max length/size/byte-length
+        final long rangeMin;                     // @Range: min numeric value
+        final long rangeMax;                     // @Range: max numeric value
+        final java.util.regex.Pattern pattern;   // @Pattern: regex for String fields (null if none)
+
+        Constraints(int minSize, int maxSize, long rangeMin, long rangeMax, java.util.regex.Pattern pattern) {
+            this.minSize = minSize;
+            this.maxSize = maxSize;
+            this.rangeMin = rangeMin;
+            this.rangeMax = rangeMax;
+            this.pattern = pattern;
         }
     }
 
@@ -61,6 +84,8 @@ public class Binder {
     private static final Map<Class<?>, ClassSchema> schemaCache = new ConcurrentHashMap<>();
     private static final Map<Class<?>, MethodHandle> ctorCache = new ConcurrentHashMap<>();
     private static final Map<Class<?>, MethodHandle> recordCtorCache = new ConcurrentHashMap<>();
+    // Per-record-class constraints, indexed by canonical-component order; built once per class.
+    private static final Map<Class<?>, Constraints[]> recordConstraintsCache = new ConcurrentHashMap<>();
     private static final Map<String, Class<?>> classNameRegistry = new ConcurrentHashMap<>();
     private static final Set<String> knownPackages = ConcurrentHashMap.newKeySet();
     private static final Class<?> AMBIGUOUS = Binder.class;
@@ -148,14 +173,12 @@ public class Binder {
                 if (binding == null) continue;
 
                 Object value = entry.getValue();
+                enforceConstraints(binding.constraints, value, binding.tag);
 
                 try {
                     switch (binding.kind) {
                         case PRIMITIVE -> binding.handle.set(ctx.o, coerceNumeric(binding.fieldType, value));
-                        case ENUM -> {
-                            Enum<?> enumValue = Enum.valueOf((Class<Enum>) binding.fieldType, value.toString());
-                            binding.handle.set(ctx.o, enumValue);
-                        }
+                        case ENUM -> binding.handle.set(ctx.o, resolveEnum(binding.fieldType, value.toString()));
                         case COLLECTION -> {
                             Collection<Object> target = instantiateCollection(binding.fieldType);
                             binding.handle.set(ctx.o, target);
@@ -195,16 +218,73 @@ public class Binder {
         }
     }
 
+    // Read @Size/@Range/@Pattern off an annotated element (field or record component) into a
+    // Constraints bundle, or null if none declared. Compiled once per class (schema/record cache).
+    private static Constraints buildConstraints(java.lang.reflect.AnnotatedElement el) {
+        Size sizeAnn = el.getAnnotation(Size.class);
+        Range rangeAnn = el.getAnnotation(Range.class);
+        Pattern patternAnn = el.getAnnotation(Pattern.class);
+        if (sizeAnn == null && rangeAnn == null && patternAnn == null) {
+            return null;
+        }
+        return new Constraints(
+                sizeAnn != null ? sizeAnn.min() : 0,
+                sizeAnn != null ? sizeAnn.max() : Integer.MAX_VALUE,
+                rangeAnn != null ? rangeAnn.min() : Long.MIN_VALUE,
+                rangeAnn != null ? rangeAnn.max() : Long.MAX_VALUE,
+                patternAnn != null ? java.util.regex.Pattern.compile(patternAnn.value()) : null);
+    }
+
+    // Fail-fast field validation during binding: @Size (String length / Collection size / byte[]
+    // length), @Range (numeric value), @Pattern (String regex). Violations throw ValidationException,
+    // which makes binding reject the whole document. {@code tag} is only used for the error message.
+    private static void enforceConstraints(Constraints c, Object value, int tag) {
+        if (c == null || value == null) {
+            return;
+        }
+        if (value instanceof CharSequence cs) {
+            int len = cs.length();
+            if (len < c.minSize || len > c.maxSize) {
+                throw new ValidationException("Field (tag " + tag + ") length " + len
+                        + " is out of bounds [" + c.minSize + ", " + c.maxSize + "]");
+            }
+            if (c.pattern != null && !c.pattern.matcher(cs).matches()) {
+                throw new ValidationException("Field (tag " + tag + ") does not match pattern "
+                        + c.pattern.pattern());
+            }
+        } else if (value instanceof Collection<?> col) {
+            int sz = col.size();
+            if (sz < c.minSize || sz > c.maxSize) {
+                throw new ValidationException("Field (tag " + tag + ") size " + sz
+                        + " is out of bounds [" + c.minSize + ", " + c.maxSize + "]");
+            }
+        } else if (value instanceof byte[] b) {
+            int len = b.length;
+            if (len < c.minSize || len > c.maxSize) {
+                throw new ValidationException("Field (tag " + tag + ") length " + len
+                        + " is out of bounds [" + c.minSize + ", " + c.maxSize + "]");
+            }
+        } else if (value instanceof Number n && !(value instanceof Float || value instanceof Double)) {
+            long v = n.longValue();
+            if (v < c.rangeMin || v > c.rangeMax) {
+                throw new ValidationException("Field (tag " + tag + ") value " + v
+                        + " is out of range [" + c.rangeMin + ", " + c.rangeMax + "]");
+            }
+        }
+    }
+
     // ---- Record support (immutable types: built via the canonical constructor, not setters) ----
 
     @SuppressWarnings("unchecked")
     private Object bindRecord(Class<?> recordClass, Map<Integer, Object> doc) {
         java.lang.reflect.RecordComponent[] comps = recordClass.getRecordComponents();
+        Constraints[] constraints = recordConstraintsCache.computeIfAbsent(recordClass, Binder::buildRecordConstraints);
         Object[] args = new Object[comps.length];
         for (int i = 0; i < comps.length; i++) {
             java.lang.reflect.RecordComponent rc = comps[i];
             int tag = tagForComponent(recordClass, rc);
             Object docVal = doc == null ? null : doc.get(tag);
+            enforceConstraints(constraints[i], docVal, tag);
             args[i] = bindComponentValue(rc.getType(), rc.getGenericType(), docVal);
         }
         try {
@@ -215,6 +295,25 @@ public class Binder {
         } catch (Throwable e) {
             throw new RuntimeException("Failed to construct record " + recordClass.getName(), e);
         }
+    }
+
+    // Constraints per record component (canonical order); annotations may be on the component or
+    // its backing field. Built once per record class and cached.
+    private static Constraints[] buildRecordConstraints(Class<?> recordClass) {
+        java.lang.reflect.RecordComponent[] comps = recordClass.getRecordComponents();
+        Constraints[] out = new Constraints[comps.length];
+        for (int i = 0; i < comps.length; i++) {
+            java.lang.reflect.RecordComponent rc = comps[i];
+            Constraints c = buildConstraints(rc);
+            if (c == null) {
+                try {
+                    c = buildConstraints(recordClass.getDeclaredField(rc.getName()));
+                } catch (NoSuchFieldException ignored) {
+                }
+            }
+            out[i] = c;
+        }
+        return out;
     }
 
     private static MethodHandle canonicalConstructor(Class<?> recordClass) {
@@ -250,6 +349,23 @@ public class Binder {
         return tag.value();
     }
 
+    // Resolve an enum constant by wire name. Forward-compat: an unknown name maps to the enum's
+    // UNKNOWN constant if it declares one (so a newer peer's new value doesn't break an older
+    // binder); otherwise the lookup stays strict and throws.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Enum<?> resolveEnum(Class<?> enumType, String name) {
+        try {
+            return Enum.valueOf((Class<Enum>) enumType, name);
+        } catch (IllegalArgumentException e) {
+            for (Object c : enumType.getEnumConstants()) {
+                if (((Enum<?>) c).name().equals("UNKNOWN")) {
+                    return (Enum<?>) c;
+                }
+            }
+            throw e;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private Object bindComponentValue(Class<?> type, java.lang.reflect.Type genericType, Object docVal) {
         if (docVal == null) {
@@ -259,7 +375,7 @@ public class Binder {
             return coerceNumeric(type, docVal);
         }
         if (type.isEnum()) {
-            return Enum.valueOf((Class<Enum>) type, docVal.toString());
+            return resolveEnum(type, docVal.toString());
         }
         if (type.isRecord()) {
             return bindRecord(type, (Map<Integer, Object>) docVal);
@@ -465,7 +581,9 @@ public class Binder {
                 kind = FieldKind.NESTED;
             }
 
-            FieldBinding binding = new FieldBinding(tag.value(), handle, kind, fieldType, field.getGenericType(), bsonDiscriminator);
+            Constraints constraints = buildConstraints(field);
+
+            FieldBinding binding = new FieldBinding(tag.value(), handle, kind, fieldType, field.getGenericType(), bsonDiscriminator, constraints);
             bindingList.add(binding);
 
             if (tag.value() > maxTag) {
