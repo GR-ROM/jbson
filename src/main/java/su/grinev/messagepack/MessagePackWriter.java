@@ -20,7 +20,7 @@ public class MessagePackWriter implements Serializer {
     private final FastPool<WriterContext> contextPool;
     private final FastPool<ArrayDeque<WriterContext>> stackPool;
     private final Map<String, byte[]> keyCache = new ConcurrentHashMap<>();
-    private final ThreadLocal<Map<String, byte[]>> stringBytesCache = ThreadLocal.withInitial(HashMap::new);
+    private final ThreadLocal<StringBytesCache> stringBytesCache = ThreadLocal.withInitial(StringBytesCache::new);
     @Setter
     @Getter
     private boolean writeLengthHeader;
@@ -35,6 +35,7 @@ public class MessagePackWriter implements Serializer {
     public void serialize(DynamicByteBuffer buffer, BinaryDocument document) {
         buffer.getBuffer().clear().order(ByteOrder.BIG_ENDIAN);
         if (writeLengthHeader) {
+            buffer.ensureCapacity(4);
             buffer.putInt(0);
         }
         Map<Object, Object> documentMap = document.getDocumentMap();
@@ -86,6 +87,7 @@ public class MessagePackWriter implements Serializer {
     }
 
     private void writeMapHeader(DynamicByteBuffer buffer, int size) {
+        buffer.ensureCapacity(5);
         if (size < 16) {
             buffer.put((byte) (0x80 | size));
         } else if (size < 65536) {
@@ -98,6 +100,7 @@ public class MessagePackWriter implements Serializer {
     }
 
     private void writeArrayHeader(DynamicByteBuffer buffer, int size) {
+        buffer.ensureCapacity(5);
         if (size < 16) {
             buffer.put((byte) (0x90 | size));
         } else if (size < 65536) {
@@ -112,12 +115,24 @@ public class MessagePackWriter implements Serializer {
     @SuppressWarnings("unchecked")
     private void writeValue(ArrayDeque<WriterContext> stack, DynamicByteBuffer buffer, Object value) {
         switch (value) {
-            case null -> buffer.put((byte) 0xC0);
-            case Boolean b -> buffer.put(b ? (byte) 0xC3 : (byte) 0xC2);
+            case null -> {
+                buffer.ensureCapacity(1);
+                buffer.put((byte) 0xC0);
+            }
+            case Boolean b -> {
+                buffer.ensureCapacity(1);
+                buffer.put(b ? (byte) 0xC3 : (byte) 0xC2);
+            }
             case Integer i -> writeInt(buffer, i);
             case Long l -> writeLong(buffer, l);
-            case Float f -> buffer.put((byte) 0xCA).putFloat(f);
-            case Double d -> buffer.put((byte) 0xCB).putDouble(d);
+            case Float f -> {
+                buffer.ensureCapacity(5);
+                buffer.put((byte) 0xCA).putFloat(f);
+            }
+            case Double d -> {
+                buffer.ensureCapacity(9);
+                buffer.put((byte) 0xCB).putDouble(d);
+            }
             case String s -> writeString(buffer, s);
             case byte[] bytes -> writeBinary(buffer, bytes);
             case ByteBuffer bb -> writeBinary(buffer, bb);
@@ -139,6 +154,7 @@ public class MessagePackWriter implements Serializer {
     }
 
     private void writeInt(DynamicByteBuffer buffer, int value) {
+        buffer.ensureCapacity(5);
         if (value >= 0) {
             if (value <= 0x7F) {
                 buffer.put((byte) value);                       // positive fixint
@@ -163,6 +179,7 @@ public class MessagePackWriter implements Serializer {
     }
 
     private void writeLong(DynamicByteBuffer buffer, long value) {
+        buffer.ensureCapacity(9);
         if (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE) {
             writeInt(buffer, (int) value);
         } else if (value > 0 && value <= 0xFFFFFFFFL) {
@@ -173,17 +190,12 @@ public class MessagePackWriter implements Serializer {
     }
 
     private void writeString(DynamicByteBuffer buffer, String value) {
-        Map<String, byte[]> cache = stringBytesCache.get();
-        byte[] bytes = cache.get(value);
-        if (bytes == null) {
-            bytes = value.getBytes(StandardCharsets.UTF_8);
-            cache.put(value, bytes);
-        }
-        doWriteString(buffer, bytes);
+        doWriteString(buffer, stringBytesCache.get().utf8(value));
     }
 
     private void doWriteString(DynamicByteBuffer buffer, byte[] stringBytes) {
         int len = stringBytes.length;
+        buffer.ensureCapacity(5 + len);
         if (len < 32) {
             buffer.put((byte) (0xA0 | len));
         } else if (len < 256) {
@@ -198,6 +210,7 @@ public class MessagePackWriter implements Serializer {
 
     private void writeBinary(DynamicByteBuffer buffer, byte[] bytes) {
         int len = bytes.length;
+        buffer.ensureCapacity(5 + len);
         if (len < 256) {
             buffer.put((byte) 0xC4).put((byte) len);
         } else if (len < 65536) {
@@ -210,6 +223,7 @@ public class MessagePackWriter implements Serializer {
 
     private void writeBinary(DynamicByteBuffer buffer, ByteBuffer bb) {
         int len = bb.remaining();
+        buffer.ensureCapacity(5 + len);
         if (len < 256) {
             buffer.put((byte) 0xC4).put((byte) len);
         } else if (len < 65536) {
@@ -222,6 +236,7 @@ public class MessagePackWriter implements Serializer {
 
     private void writeExtension(DynamicByteBuffer buffer, MessagePackExtension ext) {
         int len = ext.data().length;
+        buffer.ensureCapacity(6 + len);
         switch (len) {
             case 1 -> buffer.put((byte) 0xD4);
             case 2 -> buffer.put((byte) 0xD5);
@@ -242,6 +257,7 @@ public class MessagePackWriter implements Serializer {
     }
 
     private void writeTimestamp(DynamicByteBuffer buffer, Instant instant) {
+        buffer.ensureCapacity(15);
         long seconds = instant.getEpochSecond();
         int nanos = instant.getNano();
 
@@ -265,5 +281,40 @@ public class MessagePackWriter implements Serializer {
             return cm.entryIterator();
         }
         return ((Map<Object, Object>) map).entrySet().iterator();
+    }
+
+    /**
+     * Bounded per-thread String→UTF-8 cache (2-way set-associative, overwrite on miss).
+     * Replaces an unbounded HashMap that retained every distinct string ever serialized —
+     * on a VPN node that meant every unique JWT/jti pinned per thread for its lifetime.
+     * Long strings (tokens, payloads) are almost always unique, so caching them is pure
+     * retention loss: they bypass the cache entirely.
+     */
+    static final class StringBytesCache {
+        private static final int CAPACITY = 256;               // power of two
+        private static final int MASK = CAPACITY - 1;
+        private static final int MAX_CACHED_LENGTH = 64;       // protocol strings are short
+        private final String[] keys = new String[CAPACITY];
+        private final byte[][] values = new byte[CAPACITY][];
+
+        byte[] utf8(String value) {
+            if (value.length() > MAX_CACHED_LENGTH) {
+                return value.getBytes(StandardCharsets.UTF_8);
+            }
+            int slot = value.hashCode() & MASK;
+            if (value.equals(keys[slot])) {
+                return values[slot];
+            }
+            int sibling = slot ^ 1;
+            if (value.equals(keys[sibling])) {
+                return values[sibling];
+            }
+            byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+            // Prefer an empty way; otherwise evict the primary slot.
+            int victim = keys[slot] == null || keys[sibling] != null ? slot : sibling;
+            keys[victim] = value;
+            values[victim] = bytes;
+            return bytes;
+        }
     }
 }

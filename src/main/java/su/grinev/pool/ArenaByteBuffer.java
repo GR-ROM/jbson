@@ -120,7 +120,9 @@ public class ArenaByteBuffer implements Disposable {
         Arena oldArena = arena;
         this.arena = newArena;
         this.segment = newSegment;
-        this.buffer = newSegment.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        // Preserve the caller's byte order: msgpack writes BIG_ENDIAN, BSON LITTLE_ENDIAN —
+        // hardcoding LE here would silently flip the order of a big-endian stream mid-write.
+        this.buffer = newSegment.asByteBuffer().order(buffer.order());
         this.buffer.position(used);
         if (release == Release.MANUAL) {
             holder.arena = newArena;   // the cleaner now tracks the new arena
